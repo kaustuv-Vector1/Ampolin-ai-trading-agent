@@ -36,6 +36,7 @@ from config import (
     CHECK_WEEKLY_TREND,
     MIN_VOLUME_EXPANSION_RATIO,
     REQUIRE_CANDLE_STRENGTH,
+    MAX_EMA20_DISTANCE_PCT,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -242,6 +243,11 @@ class SwingScanner:
 
         breakout_valid = is_bullish_alignment and (fresh_cross_ema20 or recent_golden_cross or bullish_expansion)
         if not breakout_valid:
+            return None
+
+        # 3.5 Anti-Chasing Ceiling: Reject overextended setups (> 2.2% above 20 EMA)
+        ema_distance_pct = ((close - ema_fast) / ema_fast) * 100.0
+        if ema_distance_pct > MAX_EMA20_DISTANCE_PCT:
             return None
 
         # 4. RSI Momentum Filter:

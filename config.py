@@ -67,15 +67,17 @@ ATR_PERIOD = int(os.getenv("ATR_PERIOD", "14"))
 ATR_SL_MULTIPLIER = float(os.getenv("ATR_SL_MULTIPLIER", "1.5"))
 TP_RISK_MULTIPLIER = float(os.getenv("TP_RISK_MULTIPLIER", "2.0"))
 
-# VectorBT Sandbox Filter Requirements
-MIN_WIN_RATE = float(os.getenv("MIN_WIN_RATE", "0.45"))  # >= 45% win rate required
-MIN_EXPECTANCY = float(os.getenv("MIN_EXPECTANCY", "0.0"))  # Positive expectancy required
+# VectorBT Sandbox Filter Requirements (Upgraded for High Win Rate)
+MIN_WIN_RATE = float(os.getenv("MIN_WIN_RATE", "0.52"))            # >= 52% historical win rate required
+MIN_EXPECTANCY = float(os.getenv("MIN_EXPECTANCY", "0.0"))        # Positive expectancy required
+MIN_PROFIT_FACTOR = float(os.getenv("MIN_PROFIT_FACTOR", "1.50"))  # Minimum 1.50 Profit Factor required
 BACKTEST_LOOKBACK_DAYS = int(os.getenv("BACKTEST_LOOKBACK_DAYS", "90"))
 
-# Institutional Intelligence & Multi-Timeframe Settings
+# Institutional Intelligence & Anti-Chasing Settings
 CHECK_WEEKLY_TREND = True            # Confirms Higher Timeframe (Weekly) 20 EMA > 50 EMA bullish alignment
 MIN_VOLUME_EXPANSION_RATIO = 1.15    # Volume must exceed 1.15x the 20-day average
 REQUIRE_CANDLE_STRENGTH = 0.55       # Close must finish in upper 45% of high-low range (bullish bar)
+MAX_EMA20_DISTANCE_PCT = 2.2         # Reject if price extended > 2.2% above 20 EMA (prevents chasing tops)
 
 # Nifty 50 Tickers (NSE suffix .NS for yfinance)
 NIFTY_50_TICKERS = [

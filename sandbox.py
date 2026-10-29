@@ -24,6 +24,7 @@ from config import (
     ACTIVE_RULES_PATH,
     MIN_WIN_RATE,
     MIN_EXPECTANCY,
+    MIN_PROFIT_FACTOR,
     BACKTEST_LOOKBACK_DAYS,
 )
 from scanner import CandidateSetup
@@ -185,22 +186,28 @@ class VectorBTSandbox:
                 avg_loss = float(full_trades.losing.returns.mean()) * 100.0 if full_trades.losing.count() > 0 else 0.0
                 max_dd = float(full_portfolio.drawdowns.max_drawdown()) * 100.0
 
-            # Strict approval logic:
-            # 1. Expectancy must be > 0 (positive edge per rupee risked)
-            # 2. Win rate must be >= 45% (0.45)
-            # 3. Must have had at least 1 validated historical trade
+            # Strict approval logic (Upgraded for high institutional win rate):
+            # 1. Total historical trades must be >= 2 for statistical validity
+            # 2. Win rate must be >= min_win_rate (default 52%)
+            # 3. Expectancy must be positive (> 0)
+            # 4. Profit factor must be >= min_profit_factor (default 1.50)
             approved = True
             rejection_reasons = []
 
-            if total_trades < 1:
+            min_pf = float(self.rules.get("min_profit_factor", MIN_PROFIT_FACTOR))
+
+            if total_trades < 2:
                 approved = False
-                rejection_reasons.append("Insufficient trade samples in backtest window")
+                rejection_reasons.append("Insufficient trade samples in backtest window (< 2 trades)")
             if win_rate < self.min_win_rate:
                 approved = False
                 rejection_reasons.append(f"Win rate {win_rate*100:.1f}% below minimum threshold {self.min_win_rate*100:.1f}%")
             if expectancy <= self.min_expectancy:
                 approved = False
                 rejection_reasons.append(f"Expectancy ₹{expectancy:.2f} is non-positive")
+            if profit_factor < min_pf:
+                approved = False
+                rejection_reasons.append(f"Profit factor {profit_factor:.2f} below minimum threshold {min_pf:.2f}")
 
             rejection_reason_str = " | ".join(rejection_reasons) if rejection_reasons else None
 

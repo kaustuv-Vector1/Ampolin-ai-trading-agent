@@ -112,6 +112,15 @@ class CloudTradingDaemon:
         schedule.every().day.at("22:00", "Asia/Kolkata").do(lambda: self.scan_us_cycle("22:00 IST US MID-DAY"))
         schedule.every().day.at("01:15", "Asia/Kolkata").do(self.pre_close_sweep)
 
+        # Launch interactive 2-way Telegram chat listener in background thread
+        try:
+            from telegram_bot import InteractiveTelegramBot
+            tg_bot = InteractiveTelegramBot()
+            tg_bot.start_polling_in_background()
+            logger.info("Interactive 2-Way Telegram Chat Bot initialized and polling.")
+        except Exception as e:
+            logger.warning(f"Could not start Telegram chat bot: {e}")
+
         self.notifier.send_message(
             "☁️ <b>AMPOLIN CLOUD DAEMON ACTIVE (24/7 DUAL-MARKET)</b>\n\n"
             "🇮🇳 <b>National Stock Exchange (NSE India):</b>\n"
@@ -124,7 +133,7 @@ class CloudTradingDaemon:
             "• 19:30 IST: Wall Street Open Scan (NVDA, AAPL...)\n"
             "• 22:00 IST: US Mid-Session Momentum Scan\n"
             "• 01:15 IST: US Pre-Close Trailing SL Sweep\n\n"
-            "<i>Running in Paper Trading mode. All signals delivered live to Telegram!</i>"
+            "💬 <b>2-Way AI Chat Online:</b> Message me anytime or type <b>/help</b>, <b>/positions</b>, or <b>/scan</b>!"
         )
 
         while True:
