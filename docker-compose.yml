@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  ampolin-trader:
+    build: .
+    container_name: ampolin_trading_agent
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - TZ=Asia/Kolkata
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      # Persist SQLite trade history, active rules, and logs across container updates
+      - ./trades.db:/app/trades.db
+      - ./active_rules.json:/app/active_rules.json
+      - ./.env:/app/.env

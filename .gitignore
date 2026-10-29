@@ -1,0 +1,35 @@
+# Environment variables and secrets
+.env
+.env.local
+*.env
+
+# Python Virtual Environment
+venv/
+env/
+ENV/
+*.venv
+
+# Python Bytecode and Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Databases and Local State
+# (trades.db can be kept locally or committed if empty)
+*.sqlite
+*.sqlite3
+
+# Logs and Process Outputs
+*.log
+nohup.out
+
+# OS specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Antigravity/Editor configs
+.gemini/
+.idea/
+.vscode/
