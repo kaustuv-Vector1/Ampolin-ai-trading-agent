@@ -27,8 +27,8 @@ DHAN_ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN", "")
 
 # Gemini AI Credentials & Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Configurable model name; defaults to gemini-2.5-flash or gemini-3.8-flash
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Configurable model name (defaults to gemini-3.5-flash-lite / gemini-3.8-flash)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 # Telegram Bot Credentials
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -51,6 +51,10 @@ STAGE1_BREAKEVEN_R = 1.0       # Move Stop Loss to Breakeven when trade reaches 
 STAGE2_PARTIAL_EXIT_R = 2.0    # Book 50% partial exit when trade reaches 2.0R profit
 STAGE2_PARTIAL_EXIT_RATIO = 0.50 # 50% of position scaled out at 2R
 STAGE3_TRAILING_EMA = 20       # Trail remaining 50% along the 20-period EMA
+
+# Profit Ratchet / Gain Lock Settings (Custom Rule: lock +2% when gain hits 3-4%)
+PROFIT_TRIGGER_PCT = float(os.getenv("PROFIT_TRIGGER_PCT", "3.5"))   # Triggers when price gains 3.5%
+PROFIT_LOCK_PCT = float(os.getenv("PROFIT_LOCK_PCT", "2.0"))         # Locks minimum guaranteed gain at 2.0%
 
 # Technical Scanner & Strategy Defaults
 DEFAULT_TIMEFRAME = os.getenv("DEFAULT_TIMEFRAME", "1d")  # "1d" or "4h"

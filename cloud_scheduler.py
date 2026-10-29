@@ -93,11 +93,11 @@ class CloudTradingDaemon:
         logger.info("Starting Ampolin Cloud Autonomous Trading Daemon (Schedule: IST)...")
 
         # Schedule daily events in IST
-        schedule.every().day.at("09:15").do(self.morning_check)
-        schedule.every().day.at("10:30").do(lambda: self.scan_cycle("10:30 IST MORNING"))
-        schedule.every().day.at("13:45").do(lambda: self.scan_cycle("13:45 IST AFTERNOON"))
-        schedule.every().day.at("15:10").do(self.pre_close_sweep)
-        schedule.every().day.at("15:45").do(self.eod_cycle)
+        schedule.every().day.at("09:15", "Asia/Kolkata").do(self.morning_check)
+        schedule.every().day.at("10:30", "Asia/Kolkata").do(lambda: self.scan_cycle("10:30 IST MORNING"))
+        schedule.every().day.at("13:45", "Asia/Kolkata").do(lambda: self.scan_cycle("13:45 IST AFTERNOON"))
+        schedule.every().day.at("15:10", "Asia/Kolkata").do(self.pre_close_sweep)
+        schedule.every().day.at("15:45", "Asia/Kolkata").do(self.eod_cycle)
 
         self.notifier.send_message(
             "☁️ <b>AMPOLIN CLOUD DAEMON STARTED</b>\n"
@@ -115,7 +115,18 @@ class CloudTradingDaemon:
 
 
 if __name__ == "__main__":
-    daemon = CloudTradingDaemon(dry_run=True)
-    # Quick verification that daemon methods can be called
-    print("CloudTradingDaemon loaded successfully. Testing one-shot position sweep...")
-    daemon.pre_close_sweep()
+    import argparse
+    parser = argparse.ArgumentParser(description="Ampolin Autonomous Trading Daemon")
+    parser.add_argument("--live", action="store_true", help="Run with live broker orders instead of paper trading")
+    parser.add_argument("--test-sweep", action="store_true", help="Run a one-shot position sweep test and exit")
+    args = parser.parse_args()
+
+    is_dry_run = not args.live
+    daemon = CloudTradingDaemon(dry_run=is_dry_run)
+
+    if args.test_sweep:
+        print(f"Testing one-shot position sweep (Dry-Run: {is_dry_run})...")
+        daemon.pre_close_sweep()
+    else:
+        print(f"Starting autonomous daily schedule (Dry-Run: {is_dry_run})...")
+        daemon.run_scheduler()

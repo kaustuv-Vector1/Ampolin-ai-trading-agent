@@ -20,6 +20,8 @@ from config import (
     STAGE2_PARTIAL_EXIT_R,
     STAGE2_PARTIAL_EXIT_RATIO,
     STAGE3_TRAILING_EMA,
+    PROFIT_TRIGGER_PCT,
+    PROFIT_LOCK_PCT,
 )
 from reflection import TradeLogger
 from telegram_notifier import TelegramNotifier
@@ -106,22 +108,62 @@ class PositionManager:
                     f"SL: ₹{stop_loss} | 20EMA: ₹{ema20} | Stage: {current_stage}"
                 )
 
-                # Rule 0: Hard Stop Loss Hit
+                pct_gain = ((curr_price - entry_price) / entry_price) * 100.0
+
+                # Rule 0: Hard Stop Loss or Trailing Floor Hit
                 if curr_price <= stop_loss:
                     self.trade_logger.close_trade(order_id, exit_price=curr_price)
+                    realized_pnl = round((curr_price - entry_price) * quantity, 2)
+                    is_profit_exit = curr_price >= entry_price
+                    action_type = "PROFIT_FLOOR_EXIT" if is_profit_exit else "STOP_LOSS_EXIT"
                     actions_taken.append({
                         "ticker": ticker,
-                        "action": "STOP_LOSS_EXIT",
+                        "action": action_type,
                         "exit_price": curr_price,
-                        "pnl": round((curr_price - entry_price) * quantity, 2),
+                        "pnl": realized_pnl,
                     })
-                    msg = (
-                        f"🛑 <b>STOP LOSS HIT - {ticker}</b>\n"
-                        f"Exit Price: ₹{curr_price} | Entry: ₹{entry_price}\n"
-                        f"Realized P&L: ₹{round((curr_price - entry_price) * quantity, 2):,.2f}"
-                    )
+                    if is_profit_exit:
+                        msg = (
+                            f"💰 <b>PROFIT FLOOR SECURED - {ticker}</b>\n"
+                            f"Exit Price: ₹{curr_price} | Entry: ₹{entry_price}\n"
+                            f"<b>Realized Profit:</b> ₹{realized_pnl:,.2f} (+{pct_gain:.2f}%)"
+                        )
+                    else:
+                        msg = (
+                            f"🛑 <b>STOP LOSS HIT - {ticker}</b>\n"
+                            f"Exit Price: ₹{curr_price} | Entry: ₹{entry_price}\n"
+                            f"Realized P&L: ₹{realized_pnl:,.2f}"
+                        )
                     self.notifier.send_message(msg)
                     continue
+
+                # Rule 0.5: Profit Ratchet (+3% to +4% reached -> Lock in +2.0% profit floor)
+                locked_sl = round(entry_price * (1.0 + (PROFIT_LOCK_PCT / 100.0)), 2)
+                if pct_gain >= PROFIT_TRIGGER_PCT and stop_loss < locked_sl:
+                    cursor.execute(
+                        "UPDATE trades SET stop_loss = ?, stage = 'STAGE_PROFIT_LOCKED' WHERE id = ?",
+                        (locked_sl, trade_id),
+                    )
+                    conn.commit()
+                    logger.info(
+                        f"-> [PROFIT LOCK] {ticker} up +{pct_gain:.2f}%! Stop Loss raised to ₹{locked_sl} "
+                        f"(Locking +{PROFIT_LOCK_PCT}% minimum profit floor)."
+                    )
+                    actions_taken.append({
+                        "ticker": ticker,
+                        "action": "PROFIT_LOCKED_2PCT",
+                        "new_stop_loss": locked_sl,
+                        "current_gain_pct": pct_gain,
+                    })
+                    msg = (
+                        f"🔒 <b>PROFIT LOCKED IN (+{PROFIT_LOCK_PCT}% GUARANTEED) - {ticker}</b>\n"
+                        f"Current Price: ₹{curr_price} (<b>+{pct_gain:.2f}%</b>)\n"
+                        f"Protective Stop Loss raised to ₹{locked_sl} (+{PROFIT_LOCK_PCT}% profit floor).\n"
+                        f"If price retraces back to ₹{locked_sl}, it sells automatically to guarantee +{PROFIT_LOCK_PCT}% profit!"
+                    )
+                    self.notifier.send_message(msg)
+                    stop_loss = locked_sl
+                    current_stage = "STAGE_PROFIT_LOCKED"
 
                 # Stage 1: Breakeven Trigger at 1.0R
                 if current_r >= STAGE1_BREAKEVEN_R and stop_loss < entry_price and current_stage == "STAGE_INITIAL":
