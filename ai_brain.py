@@ -44,9 +44,22 @@ class TradeDecision(BaseModel):
 
 
 class GeminiBrain:
-    def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model_name: Optional[str] = None,
+        trade_logger: Optional[Any] = None,
+    ):
         self.api_key = api_key or GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
-        self.model_name = model_name or GEMINI_MODEL or "gemini-2.5-flash"
+        self.model_name = model_name or GEMINI_MODEL or "gemini-3.5-flash-lite"
+        self.trade_logger = trade_logger
+        self.catalyst_tracker = None
+        try:
+            from catalyst_tracker import CatalystTracker
+            self.catalyst_tracker = CatalystTracker()
+        except Exception as e:
+            logger.debug(f"Could not load CatalystTracker: {e}")
+
         self.client = None
 
         if self.api_key and GENAI_AVAILABLE:
@@ -60,6 +73,15 @@ class GeminiBrain:
 
     def _build_analysis_prompt(self, setup: CandidateSetup, backtest: BacktestResult, rules: Dict[str, Any]) -> str:
         sym = "₹" if setup.currency == "INR" else "$"
+
+        catalyst_context = "No breaking news or insider alerts."
+        if self.catalyst_tracker:
+            catalyst_context = self.catalyst_tracker.get_catalyst_context(setup.ticker)
+
+        memory_context = "No historical closed trades recorded yet."
+        if self.trade_logger and hasattr(self.trade_logger, "get_experiential_memory"):
+            memory_context = self.trade_logger.get_experiential_memory(setup.ticker)
+
         prompt = f"""
 You are the Chief Quantitative Strategist for 'Ampolin AI Trading Agent', an institutional-grade swing trading system
 operating on the National Stock Exchange of India (NSE) and US Wall Street Equities for cash delivery positions.
@@ -84,6 +106,12 @@ Analyze the following validated technical breakout setup and deliver a definitiv
 - Suggested Technical TP: {sym}{setup.suggested_tp}
 - Base Risk/Reward: 1:{setup.risk_reward_ratio}
 
+=== BREAKING NEWS & BIG-MONEY / INSIDER CATALYSTS ===
+{catalyst_context}
+
+=== EXPERIENTIAL PAST TRADE MEMORY (LEARNED LESSONS) ===
+{memory_context}
+
 === 90-DAY VECTORBT BACKTEST VERIFICATION ===
 - Historical Win Rate: {backtest.win_rate * 100:.1f}% (Minimum required: 45.0%)
 - Expectancy: {sym}{backtest.expectancy:.2f} (Must be positive)
@@ -94,6 +122,8 @@ Analyze the following validated technical breakout setup and deliver a definitiv
 
 === INSTITUTIONAL TRADING RULES ===
 - Multi-Timeframe Alignment: Strongly prioritize setups with 'BULLISH_CONFLUENCE' on the Weekly timeframe.
+- News/Catalyst Awareness: If breaking news indicates severe regulatory, legal, or earnings risk, reject or PASS.
+- Memory Integration: Learn from past trade outcomes. Avoid setups resembling recent failed patterns.
 - Maximum account risk per trade: 1.0% of total capital (dynamically adjusted).
 - Minimum Risk to Reward: 1:2.0.
 - Holding period: Multi-day swing (typically 3 to 10 trading sessions).

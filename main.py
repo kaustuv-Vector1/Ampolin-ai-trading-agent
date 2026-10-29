@@ -39,11 +39,11 @@ class AmpolinPipeline:
         self.timeframe = timeframe
 
         logger.info(f"Initializing Ampolin AI Trading Agent (Dry-Run={self.dry_run}, Timeframe={self.timeframe})...")
+        self.trade_logger = TradeLogger()
         self.scanner = SwingScanner()
         self.sandbox = VectorBTSandbox()
-        self.brain = GeminiBrain()
+        self.brain = GeminiBrain(trade_logger=self.trade_logger)
         self.broker = DhanBroker(dry_run=self.dry_run)
-        self.trade_logger = TradeLogger()
         self.reflection = EODReflection(self.trade_logger)
         self.notifier = TelegramNotifier()
         self.regime_analyzer = MarketRegimeAnalyzer(sample_size=20)

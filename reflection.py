@@ -207,6 +207,56 @@ class TradeLogger:
             cursor.execute("SELECT * FROM trades WHERE status IN ('SUBMITTED', 'SIMULATED_FILLED', 'OPEN')")
             return [dict(row) for row in cursor.fetchall()]
 
+    def get_experiential_memory(self, ticker: Optional[str] = None, limit: int = 6) -> str:
+        """
+        Retrieves experiential trade memory from trades.db and active_rules.json
+        to inject directly into Gemini AI's prompt for in-context learning.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM trades WHERE status = 'CLOSED' ORDER BY id DESC LIMIT ?", (limit,))
+            closed_trades = [dict(r) for r in cursor.fetchall()]
+
+            prior_ticker_trades = []
+            if ticker:
+                cursor.execute("SELECT * FROM trades WHERE ticker = ? ORDER BY id DESC LIMIT 3", (ticker,))
+                prior_ticker_trades = [dict(r) for r in cursor.fetchall()]
+
+        lines = []
+        if closed_trades:
+            wins = sum(1 for t in closed_trades if (t.get("pnl") or 0) > 0)
+            losses = len(closed_trades) - wins
+            win_rate = (wins / len(closed_trades)) * 100
+            total_realized = sum(t.get("pnl") or 0 for t in closed_trades)
+            lines.append(f"Recent Executed Performance: {wins} Wins / {losses} Losses ({win_rate:.0f}% win rate) | Realized P&L: ₹{total_realized:,.2f}")
+            lines.append("Recent Closed Trades:")
+            for t in closed_trades[:4]:
+                pnl = t.get("pnl") or 0.0
+                pct = t.get("pnl_percentage") or 0.0
+                result_str = f"WIN (+{pct:.1f}%)" if pnl > 0 else f"LOSS ({pct:.1f}%)"
+                lines.append(f"• [{result_str}] {t['ticker']} @ {t['entry_price']} -> Exit: {t['exit_price']} | P&L: ₹{pnl:,.2f}")
+        else:
+            lines.append("Recent Executed Performance: Currently holding active paper positions. No closed losses on record.")
+
+        if prior_ticker_trades:
+            lines.append(f"Past History on {ticker}:")
+            for pt in prior_ticker_trades:
+                status = pt.get("status", "")
+                pnl = pt.get("pnl") or 0.0
+                lines.append(f"• Status: {status} | Entry: {pt['entry_price']} | Stage: {pt.get('stage', 'INITIAL')}")
+
+        if ACTIVE_RULES_PATH.exists():
+            try:
+                with open(ACTIVE_RULES_PATH, "r", encoding="utf-8") as f:
+                    rules_data = json.load(f)
+                    lessons = rules_data.get("reflection_summary", "")
+                    if lessons:
+                        lines.append(f"Learned Behavioral Lesson: {lessons}")
+            except Exception:
+                pass
+
+        return "\n".join(lines)
+
     def calculate_daily_summary(self, target_date: Optional[str] = None) -> Dict[str, Any]:
         """Calculates realized and unrealized P&L for a given date."""
         d_str = target_date or date.today().isoformat()
