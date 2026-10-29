@@ -29,18 +29,18 @@ except ImportError:
 
 
 class TradeDecision(BaseModel):
-    ticker: str = Field(..., description="NSE Stock Ticker with .NS suffix")
+    ticker: str = Field(..., description="Stock Ticker (NSE symbol with .NS or Wall Street ticker e.g. NVDA, AAPL)")
     action: Literal["BUY", "SELL", "PASS"] = Field(
-        ..., description="Swing trade recommendation: BUY for high conviction long, SELL for short (if F&O), PASS to skip"
+        ..., description="Swing trade recommendation: BUY for high conviction long, SELL for short, PASS to skip"
     )
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Conviction score between 0.0 and 1.0")
-    entry_price: float = Field(..., description="Recommended entry execution price in INR")
-    stop_loss: float = Field(..., description="Protective Stop Loss price in INR")
-    take_profit: float = Field(..., description="Take Profit target price in INR")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Conviction score between 0.0 and 1.0 (requires >= 0.75 for execution)")
+    entry_price: float = Field(..., description="Recommended entry execution price in local currency (INR or USD)")
+    stop_loss: float = Field(..., description="Protective Stop Loss price in local currency")
+    take_profit: float = Field(..., description="Take Profit target price in local currency")
     risk_reward_ratio: float = Field(..., description="Risk to Reward ratio (e.g. 2.0 for 1:2)")
     holding_period_days: int = Field(default=5, description="Expected swing holding period in trading days")
-    rationale: str = Field(..., description="Concise technical thesis explaining EMA breakout, RSI sweet spot, and backtest edge")
-    key_risks: str = Field(..., description="Specific invalidation criteria, market events, or sector headwinds")
+    rationale: str = Field(..., description="Technical thesis evaluating Multi-Timeframe alignment, EMA breakout, volume footprint, and VectorBT edge")
+    key_risks: str = Field(..., description="Specific invalidation criteria, market volatility, or macro headwinds")
 
 
 class GeminiBrain:
@@ -59,44 +59,47 @@ class GeminiBrain:
             logger.info("No active GEMINI_API_KEY configured. GeminiBrain will operate in rule-based verification fallback.")
 
     def _build_analysis_prompt(self, setup: CandidateSetup, backtest: BacktestResult, rules: Dict[str, Any]) -> str:
+        sym = "₹" if setup.currency == "INR" else "$"
         prompt = f"""
-You are the Chief Quantitative Strategist for 'Ampolin AI Trading Agent', an automated swing trading system
-operating on the National Stock Exchange of India (NSE) for CNC Delivery equity positions.
+You are the Chief Quantitative Strategist for 'Ampolin AI Trading Agent', an institutional-grade swing trading system
+operating on the National Stock Exchange of India (NSE) and US Wall Street Equities for cash delivery positions.
 
 Analyze the following validated technical breakout setup and deliver a definitive trading decision.
 
 === CANDIDATE ASSET SETUP ===
-- Ticker: {setup.ticker}
+- Ticker: {setup.ticker} (Currency: {setup.currency})
 - Timeframe: {setup.timeframe}
-- Current Close: ₹{setup.close}
-- Candle Open: ₹{setup.open} | High: ₹{setup.high} | Low: ₹{setup.low}
-- 20 EMA: ₹{setup.ema_fast} (Fast EMA)
-- 50 EMA: ₹{setup.ema_slow} (Slow EMA)
+- Current Close: {sym}{setup.close}
+- Candle Open: {sym}{setup.open} | High: {sym}{setup.high} | Low: {sym}{setup.low}
+- Candlestick Close Strength: {setup.candle_strength:.2f} (0.0 to 1.0; > 0.55 indicates strong buyers in control)
+- 20 EMA: {sym}{setup.ema_fast} (Fast EMA)
+- 50 EMA: {sym}{setup.ema_slow} (Slow EMA)
 - Fast EMA > Slow EMA: {setup.ema_fast > setup.ema_slow}
+- Higher Timeframe Weekly Trend Confluence: {setup.weekly_trend}
 - RSI (14): {setup.rsi:.1f} (Target sweet spot: 48.0 - 68.0)
-- ATR (14): ₹{setup.atr:.2f} ({setup.atr / setup.close * 100:.2f}% of price)
-- Volume Ratio (vs 20 MA): {setup.volume_ratio:.2f}x
+- ATR (14): {sym}{setup.atr:.2f} ({setup.atr / setup.close * 100:.2f}% of price)
+- Volume Expansion Ratio (vs 20 MA): {setup.volume_ratio:.2f}x
 - Breakout Type: {setup.breakout_type}
-- Suggested Technical SL: ₹{setup.suggested_sl}
-- Suggested Technical TP: ₹{setup.suggested_tp}
+- Suggested Technical SL: {sym}{setup.suggested_sl}
+- Suggested Technical TP: {sym}{setup.suggested_tp}
 - Base Risk/Reward: 1:{setup.risk_reward_ratio}
 
 === 90-DAY VECTORBT BACKTEST VERIFICATION ===
 - Historical Win Rate: {backtest.win_rate * 100:.1f}% (Minimum required: 45.0%)
-- Expectancy Per Rupee: ₹{backtest.expectancy:.2f} (Must be positive)
+- Expectancy: {sym}{backtest.expectancy:.2f} (Must be positive)
 - Profit Factor: {backtest.profit_factor:.2f}
 - Historical Trades Count: {backtest.total_trades}
 - Max Historical Drawdown: {backtest.max_drawdown_pct:.1f}%
 - Vectorized Simulation Latency: {backtest.execution_time_ms} ms
 
-=== ACTIVE TRADING RULES ===
-- Maximum account risk per trade: 1.0% of total capital
-- Minimum Risk to Reward: 1:1.5 (Prefer 1:2.0 or higher)
-- Holding period: Multi-day swing (typically 3 to 10 trading sessions)
-- Execution segment: NSE CNC Delivery (Cash Equity)
+=== INSTITUTIONAL TRADING RULES ===
+- Multi-Timeframe Alignment: Strongly prioritize setups with 'BULLISH_CONFLUENCE' on the Weekly timeframe.
+- Maximum account risk per trade: 1.0% of total capital (dynamically adjusted).
+- Minimum Risk to Reward: 1:2.0.
+- Holding period: Multi-day swing (typically 3 to 10 trading sessions).
+- Provide confidence >= 0.75 ONLY if technical breakout, volume footprint, and VectorBT statistical edge align convincingly. Otherwise, choose PASS.
 
 Provide your strict JSON response evaluating whether to BUY, SELL, or PASS this swing setup.
-Ensure the stop loss respects technical support below EMA 20 / ATR buffer, and take profit provides at least 1:1.5 R:R.
 """
         return prompt
 
@@ -115,8 +118,12 @@ Ensure the stop loss respects technical support below EMA 20 / ATR buffer, and t
         # If live API client is available, call Gemini Flash with strict Pydantic schema
         if self.client:
             prompt = self._build_analysis_prompt(setup, backtest, rules)
-            models_to_try = [self.model_name, "gemini-2.5-flash", "gemini-2.0-flash"]
-            for model in models_to_try:
+            models_to_try = [self.model_name, "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.5-flash"]
+            # Deduplicate preserving order
+            seen = set()
+            unique_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
+
+            for model in unique_models:
                 try:
                     logger.info(f"Querying Gemini ({model}) for {setup.ticker} trade decision...")
                     response = self.client.models.generate_content(

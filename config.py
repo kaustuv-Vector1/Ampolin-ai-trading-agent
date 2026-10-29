@@ -72,6 +72,11 @@ MIN_WIN_RATE = float(os.getenv("MIN_WIN_RATE", "0.45"))  # >= 45% win rate requi
 MIN_EXPECTANCY = float(os.getenv("MIN_EXPECTANCY", "0.0"))  # Positive expectancy required
 BACKTEST_LOOKBACK_DAYS = int(os.getenv("BACKTEST_LOOKBACK_DAYS", "90"))
 
+# Institutional Intelligence & Multi-Timeframe Settings
+CHECK_WEEKLY_TREND = True            # Confirms Higher Timeframe (Weekly) 20 EMA > 50 EMA bullish alignment
+MIN_VOLUME_EXPANSION_RATIO = 1.15    # Volume must exceed 1.15x the 20-day average
+REQUIRE_CANDLE_STRENGTH = 0.55       # Close must finish in upper 45% of high-low range (bullish bar)
+
 # Nifty 50 Tickers (NSE suffix .NS for yfinance)
 NIFTY_50_TICKERS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "BHARTIARTL.NS",
@@ -84,4 +89,11 @@ NIFTY_50_TICKERS = [
     "ADANIPORTS.NS", "SBILIFE.NS", "DRREDDY.NS", "BPCL.NS", "EICHERMOT.NS",
     "TATACONSUM.NS", "BRITANNIA.NS", "APOLLOHOSP.NS", "HEROMOTOCO.NS", "SHREECEM.NS",
     "DIVISLAB.NS", "INDUSINDBK.NS", "BAJAJ-AUTO.NS", "TRENT.NS", "BEL.NS"
+]
+
+# Wall Street / US Mega-Cap & Momentum Universe
+US_STOCKS_TICKERS = [
+    "NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA",
+    "AMD", "AVGO", "NFLX", "PLTR", "COIN", "CRWD", "ARM", "SMCI",
+    "UBER", "PANW", "SNOW", "MU", "QCOM"
 ]

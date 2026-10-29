@@ -16,6 +16,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 
 from config import (
     NIFTY_50_TICKERS,
+    US_STOCKS_TICKERS,
     DEFAULT_TIMEFRAME,
     ACTIVE_RULES_PATH,
 )
@@ -55,48 +56,65 @@ class AmpolinPipeline:
     def run_pipeline(
         self,
         tickers: Optional[List[str]] = None,
+        market: str = "NSE",
         max_trades_to_execute: int = 3,
     ) -> Dict[str, Any]:
         """
         Executes complete autonomous swing trading cycle:
-        1. Market Scan (Nifty 50)
+        1. Market Scan (Nifty 50 or Wall Street US Mega-Caps)
         2. VectorBT Backtest Filter (Expectancy > 0, Win Rate >= 45%)
-        3. Gemini Flash AI Brain Evaluation (Strict Pydantic JSON)
-        4. DhanHQ CNC Delivery Risk-Managed Execution (1% Max Account Risk)
+        3. Gemini Flash AI Brain Evaluation (Strict Pydantic JSON with Weekly Confluence)
+        4. DhanHQ / Simulated Execution (1% Max Account Risk)
         5. SQLite Trade Logging
         6. Telegram Dispatch
         """
-        scan_tickers = tickers or NIFTY_50_TICKERS
+        if tickers:
+            scan_tickers = tickers
+        elif market.upper() == "US":
+            scan_tickers = US_STOCKS_TICKERS
+        else:
+            scan_tickers = NIFTY_50_TICKERS
+
+        market_label = "WALL STREET (US)" if market.upper() == "US" else "NSE (INDIA)"
         print("\n" + "=" * 70)
-        print(f"🚀 STARTING AMPOLIN AI TRADING PIPELINE (Universe: {len(scan_tickers)} stocks, TF: {self.timeframe})")
+        print(f"🚀 STARTING AMPOLIN AI TRADING PIPELINE [{market_label}] ({len(scan_tickers)} stocks, TF: {self.timeframe})")
         print("=" * 70)
 
-        # Step 0: Active Position Management (1R Breakeven & 2R 50% Profit Booking)
+        # Step 0: Active Position Management (1R Breakeven, 2R Scaling & 3.5% Profit Ratchet)
         print("\n" + "-" * 50)
-        print("🔍 STEP 0: MANAGING ACTIVE OPEN POSITIONS (1R Breakeven & 2R Scaling)")
+        print("🔍 STEP 0: MANAGING ACTIVE OPEN POSITIONS (1R Breakeven, 2R Scaling & Profit Lock)")
         print("-" * 50)
         position_actions = self.position_manager.manage_open_positions()
 
-        # Step 0.5: Macro Regime Assessment (India VIX & Nifty 50 Market Breadth)
-        print("\n" + "-" * 50)
-        print("🌐 STEP 0.5: EVALUATING MARKET REGIME (India VIX & Market Breadth)")
-        print("-" * 50)
-        regime = self.regime_analyzer.analyze_regime()
-        print(f"-> Regime: {regime.breadth_regime} | Breadth: {regime.market_breadth_pct}% | VIX: {regime.india_vix} ({regime.vix_regime})")
-        print(f"-> Dynamic Risk per Trade: {regime.dynamic_risk_pct * 100:.2f}% | Trade Permitted: {regime.can_trade_longs}")
+        # Step 0.5: Macro Regime Assessment
+        if market.upper() == "NSE":
+            print("\n" + "-" * 50)
+            print("🌐 STEP 0.5: EVALUATING MARKET REGIME (India VIX & Market Breadth)")
+            print("-" * 50)
+            regime = self.regime_analyzer.analyze_regime()
+            print(f"-> Regime: {regime.breadth_regime} | Breadth: {regime.market_breadth_pct}% | VIX: {regime.india_vix} ({regime.vix_regime})")
+            print(f"-> Dynamic Risk per Trade: {regime.dynamic_risk_pct * 100:.2f}% | Trade Permitted: {regime.can_trade_longs}")
 
-        if not regime.can_trade_longs:
-            logger.warning(f"Market Regime Check: {regime.regime_rationale}. Halting new long entries.")
-            return {
-                "status": "MARKET_REGIME_PAUSED",
-                "regime": regime.to_dict(),
-                "position_actions": position_actions,
-                "candidates_count": 0,
-                "executed_trades": [],
-            }
+            if not regime.can_trade_longs:
+                logger.warning(f"Market Regime Check: {regime.regime_rationale}. Halting new long entries.")
+                return {
+                    "status": "MARKET_REGIME_PAUSED",
+                    "regime": regime.to_dict(),
+                    "position_actions": position_actions,
+                    "candidates_count": 0,
+                    "executed_trades": [],
+                }
+            dynamic_risk = regime.dynamic_risk_pct
+        else:
+            # Wall Street Market Scan
+            print("\n" + "-" * 50)
+            print("🌐 STEP 0.5: EVALUATING WALL STREET REGIME")
+            print("-" * 50)
+            print("-> Market: Wall Street (NYSE/NASDAQ) | Default Base Risk: 0.75%")
+            dynamic_risk = 0.0075
 
         # Step 1: Scanner
-        candidates = self.scanner.scan_universe(tickers=scan_tickers, timeframe=self.timeframe)
+        candidates = self.scanner.scan_universe(tickers=scan_tickers, market=market, timeframe=self.timeframe)
         if not candidates:
             logger.info("No candidates satisfied EMA 20/50 + RSI (48-68) + ATR breakout criteria.")
             return {"status": "NO_CANDIDATES", "candidates_count": 0, "approved_count": 0, "executed_trades": []}
@@ -127,10 +145,10 @@ class AmpolinPipeline:
                 logger.info(f"AI Brain confidence ({decision.confidence*100:.1f}%) below minimum conviction threshold. Skipping.")
                 continue
 
-            # 4. DhanHQ Broker Execution (Dynamic Risk based on India VIX)
+            # 4. DhanHQ Broker Execution (Dynamic Risk based on Regime)
             order_result = self.broker.place_cnc_bracket_order(
                 decision,
-                custom_risk_pct=regime.dynamic_risk_pct,
+                custom_risk_pct=dynamic_risk,
             )
 
             # 5. SQLite Logging

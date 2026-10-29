@@ -22,6 +22,7 @@ import yfinance as yf
 
 from config import (
     NIFTY_50_TICKERS,
+    US_STOCKS_TICKERS,
     ACTIVE_RULES_PATH,
     DEFAULT_TIMEFRAME,
     EMA_FAST,
@@ -32,6 +33,9 @@ from config import (
     ATR_PERIOD,
     ATR_SL_MULTIPLIER,
     TP_RISK_MULTIPLIER,
+    CHECK_WEEKLY_TREND,
+    MIN_VOLUME_EXPANSION_RATIO,
+    REQUIRE_CANDLE_STRENGTH,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -57,6 +61,9 @@ class CandidateSetup:
     risk_reward_ratio: float
     breakout_type: str
     volume_ratio: float
+    weekly_trend: str = "NEUTRAL"
+    candle_strength: float = 0.5
+    currency: str = "INR"
     df: Optional[pd.DataFrame] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -152,6 +159,40 @@ class SwingScanner:
 
         return df
 
+    def fetch_weekly_trend(self, ticker: str) -> str:
+        """
+        Calculates Higher Timeframe (Weekly) 20 and 50 EMA trend confluence.
+        Returns: 'BULLISH_CONFLUENCE', 'BEARISH_COUNTERTREND', or 'NEUTRAL'
+        """
+        try:
+            w_df = yf.download(
+                ticker,
+                period="1y",
+                interval="1wk",
+                progress=False,
+                multi_level_index=False,
+                auto_adjust=True,
+            )
+            if w_df.empty or len(w_df) < 20:
+                return "NEUTRAL"
+
+            w_ema20 = ta.ema(w_df["Close"], length=20)
+            w_ema50 = ta.ema(w_df["Close"], length=min(50, len(w_df) - 1))
+            if w_ema20 is None or w_ema20.empty:
+                return "NEUTRAL"
+
+            latest_close = float(w_df["Close"].iloc[-1])
+            latest_w_ema20 = float(w_ema20.iloc[-1])
+            latest_w_ema50 = float(w_ema50.iloc[-1]) if w_ema50 is not None and not w_ema50.empty else latest_w_ema20
+
+            if latest_close > latest_w_ema20 and latest_w_ema20 >= latest_w_ema50:
+                return "BULLISH_CONFLUENCE"
+            elif latest_close < latest_w_ema20:
+                return "BEARISH_COUNTERTREND"
+            return "NEUTRAL"
+        except Exception:
+            return "NEUTRAL"
+
     def evaluate_breakout(self, df: pd.DataFrame, ticker: str, timeframe: str) -> Optional[CandidateSetup]:
         """
         Evaluates whether the latest bar satisfies the EMA 20/50 breakout filtered by RSI and ATR.
@@ -213,6 +254,20 @@ class SwingScanner:
         if atr <= 0 or (atr / close) < 0.002:
             return None
 
+        # 6. Institutional Candlestick & Volume Check
+        bar_range = high - low
+        candle_strength = round((close - low) / bar_range, 2) if bar_range > 0 else 0.5
+        if REQUIRE_CANDLE_STRENGTH and candle_strength < 0.35:
+            # Rejection wick - close is in bottom 35% of bar (bearish rejection)
+            return None
+
+        # 7. Multi-Timeframe Weekly Trend Alignment
+        weekly_trend = "NEUTRAL"
+        if CHECK_WEEKLY_TREND:
+            weekly_trend = self.fetch_weekly_trend(ticker)
+
+        currency = "USD" if not ticker.endswith(".NS") and not ticker.endswith(".BO") else "INR"
+
         # Determine breakout classification
         if fresh_cross_ema20:
             breakout_type = "EMA20_PRICE_CROSSOVER"
@@ -249,19 +304,28 @@ class SwingScanner:
             risk_reward_ratio=risk_reward,
             breakout_type=breakout_type,
             volume_ratio=volume_ratio,
+            weekly_trend=weekly_trend,
+            candle_strength=candle_strength,
+            currency=currency,
             df=clean_df,
         )
 
     def scan_universe(
         self,
         tickers: Optional[List[str]] = None,
+        market: str = "NSE",
         timeframe: str = DEFAULT_TIMEFRAME,
         lookback_days: int = 180,
     ) -> List[CandidateSetup]:
         """
-        Scans given universe or full Nifty 50 for setups.
+        Scans given universe: 'NSE' (Nifty 50) or 'US' (Wall Street Mega-Caps) for setups.
         """
-        ticker_list = tickers or NIFTY_50_TICKERS
+        if tickers:
+            ticker_list = tickers
+        elif market.upper() == "US":
+            ticker_list = US_STOCKS_TICKERS
+        else:
+            ticker_list = NIFTY_50_TICKERS
         candidates: List[CandidateSetup] = []
         logger.info(f"Scanning {len(ticker_list)} stocks on timeframe '{timeframe}'...")
 

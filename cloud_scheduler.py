@@ -66,16 +66,24 @@ class CloudTradingDaemon:
             return
 
         logger.info(f"--- [{session_label}] EXECUTING NIFTY 50 AUTONOMOUS SCAN ---")
-        result = self.pipeline.run_pipeline(max_trades_to_execute=2)
+        result = self.pipeline.run_pipeline(market="NSE", max_trades_to_execute=2)
         logger.info(f"Scan cycle complete: {result.get('status')} | Trades: {len(result.get('executed_trades', []))}")
+
+    def scan_us_cycle(self, session_label: str):
+        if not self.is_market_day():
+            return
+
+        logger.info(f"--- [{session_label}] EXECUTING WALL STREET (US) AUTONOMOUS SCAN ---")
+        result = self.pipeline.run_pipeline(market="US", max_trades_to_execute=2)
+        logger.info(f"Wall Street scan cycle complete: {result.get('status')} | Trades: {len(result.get('executed_trades', []))}")
 
     def pre_close_sweep(self):
         if not self.is_market_day():
             return
 
-        logger.info("--- [15:10 IST] EXECUTING PRE-CLOSE POSITION SWEEP ---")
+        logger.info("--- [POSITION SWEEP] EXECUTING TRAILING SL & PROFIT LOCK SWEEP ---")
         actions = self.position_mgr.manage_open_positions()
-        logger.info(f"Pre-close sweep completed with {len(actions)} adjustments.")
+        logger.info(f"Position sweep completed with {len(actions)} adjustments.")
 
     def eod_cycle(self):
         if not self.is_market_day():
@@ -92,21 +100,31 @@ class CloudTradingDaemon:
     def run_scheduler(self):
         logger.info("Starting Ampolin Cloud Autonomous Trading Daemon (Schedule: IST)...")
 
-        # Schedule daily events in IST
+        # Indian Equities (NSE) Schedule in IST
         schedule.every().day.at("09:15", "Asia/Kolkata").do(self.morning_check)
         schedule.every().day.at("10:30", "Asia/Kolkata").do(lambda: self.scan_cycle("10:30 IST MORNING"))
         schedule.every().day.at("13:45", "Asia/Kolkata").do(lambda: self.scan_cycle("13:45 IST AFTERNOON"))
         schedule.every().day.at("15:10", "Asia/Kolkata").do(self.pre_close_sweep)
         schedule.every().day.at("15:45", "Asia/Kolkata").do(self.eod_cycle)
 
+        # Wall Street (US Equities) Schedule in IST
+        schedule.every().day.at("19:30", "Asia/Kolkata").do(lambda: self.scan_us_cycle("19:30 IST US OPEN"))
+        schedule.every().day.at("22:00", "Asia/Kolkata").do(lambda: self.scan_us_cycle("22:00 IST US MID-DAY"))
+        schedule.every().day.at("01:15", "Asia/Kolkata").do(self.pre_close_sweep)
+
         self.notifier.send_message(
-            "☁️ <b>AMPOLIN CLOUD DAEMON STARTED</b>\n"
-            "Autonomous schedule active for Indian Equities (NSE):\n"
-            "• 09:15 IST: Open Sweep\n"
-            "• 10:30 IST: Morning Scan\n"
-            "• 13:45 IST: Afternoon Scan\n"
-            "• 15:10 IST: Pre-Close Trailing SL Check\n"
-            "• 15:45 IST: EOD Reflection & Daily P&L"
+            "☁️ <b>AMPOLIN CLOUD DAEMON ACTIVE (24/7 DUAL-MARKET)</b>\n\n"
+            "🇮🇳 <b>National Stock Exchange (NSE India):</b>\n"
+            "• 09:15 IST: Open Sweep & Health Check\n"
+            "• 10:30 IST: Morning Swing Scan (Nifty 50)\n"
+            "• 13:45 IST: Afternoon Swing Scan\n"
+            "• 15:10 IST: Pre-Close 3.5% Profit Lock Sweep\n"
+            "• 15:45 IST: EOD Reflection & Daily P&L\n\n"
+            "🇺🇸 <b>Wall Street (US Tech & Momentum):</b>\n"
+            "• 19:30 IST: Wall Street Open Scan (NVDA, AAPL...)\n"
+            "• 22:00 IST: US Mid-Session Momentum Scan\n"
+            "• 01:15 IST: US Pre-Close Trailing SL Sweep\n\n"
+            "<i>Running in Paper Trading mode. All signals delivered live to Telegram!</i>"
         )
 
         while True:
