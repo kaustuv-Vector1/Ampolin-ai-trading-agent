@@ -754,9 +754,24 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
 </html>
 """
 
-def start_server(host: str = "127.0.0.1", port: int = 8000):
-    logger.info(f"Starting Ampolin AI Trading Agent Web UI on http://{host}:{port}")
-    uvicorn.run(app, host=host, port=port)
+@app.on_event("startup")
+def on_startup():
+    """Starts the 24/7 autonomous trading scheduler & Telegram bot in the cloud."""
+    import threading
+    try:
+        from cloud_scheduler import CloudTradingDaemon
+        daemon = CloudTradingDaemon(dry_run=True)
+        t = threading.Thread(target=daemon.run_scheduler, daemon=True, name="CloudDaemonThread")
+        t.start()
+        logger.info("Autonomous Dual-Market Scheduler & Telegram Bot started inside Cloud Container.")
+    except Exception as e:
+        logger.warning(f"Could not auto-start background daemon: {e}")
+
+def start_server(host: Optional[str] = None, port: Optional[int] = None):
+    server_host = host or os.getenv("HOST", "0.0.0.0")
+    server_port = port or int(os.getenv("PORT", "8000"))
+    logger.info(f"Starting Ampolin AI Trading Agent Web UI on http://{server_host}:{server_port}")
+    uvicorn.run(app, host=server_host, port=server_port)
 
 
 if __name__ == "__main__":
