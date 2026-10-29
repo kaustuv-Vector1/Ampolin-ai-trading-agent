@@ -16,9 +16,10 @@ __pycache__/
 .pytest_cache/
 
 # Databases and Local State
-# (trades.db can be kept locally or committed if empty)
+trades.db
 *.sqlite
 *.sqlite3
+*.db
 
 # Logs and Process Outputs
 *.log
