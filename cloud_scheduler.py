@@ -46,6 +46,37 @@ class CloudTradingDaemon:
         now_ist = datetime.now(IST)
         return now_ist.weekday() < 5  # Mon=0, Fri=4
 
+    def is_nse_market_open(self) -> bool:
+        """Returns True if current time is within NSE trading hours (09:15 - 15:30 IST)."""
+        if not self.is_market_day():
+            return False
+        now = datetime.now(IST)
+        market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+        return market_open <= now <= market_close
+
+    def is_us_market_open(self) -> bool:
+        """Returns True if current time is within Wall Street hours (19:30 - 01:30 IST)."""
+        now = datetime.now(IST)
+        if now.weekday() < 5 and (now.hour > 19 or (now.hour == 19 and now.minute >= 30) or now.hour >= 20):
+            return True
+        if now.weekday() <= 5 and now.hour in (0, 1):
+            return True
+        return False
+
+    def periodic_market_check(self):
+        """Runs every 15 minutes: sweeps open positions and executes scans during active market sessions."""
+        if self.is_nse_market_open():
+            logger.info("--- [AUTONOMOUS 15-MIN CYCLE] NSE MARKET ACTIVE ---")
+            self.position_mgr.manage_open_positions()
+            self.scan_cycle("INTRADAY NSE AUTONOMOUS SCAN")
+        elif self.is_us_market_open():
+            logger.info("--- [AUTONOMOUS 15-MIN CYCLE] WALL STREET MARKET ACTIVE ---")
+            self.position_mgr.manage_open_positions()
+            self.scan_us_cycle("INTRADAY US AUTONOMOUS SCAN")
+        else:
+            self.position_mgr.manage_open_positions()
+
     def morning_check(self):
         if not self.is_market_day():
             logger.info("Market is closed today (Weekend). Skipping morning check.")
@@ -111,6 +142,9 @@ class CloudTradingDaemon:
         schedule.every().day.at("19:30", "Asia/Kolkata").do(lambda: self.scan_us_cycle("19:30 IST US OPEN"))
         schedule.every().day.at("22:00", "Asia/Kolkata").do(lambda: self.scan_us_cycle("22:00 IST US MID-DAY"))
         schedule.every().day.at("01:15", "Asia/Kolkata").do(self.pre_close_sweep)
+
+        # Recurring Autonomous Monitoring: sweeps positions & auto-executes setups every 15 minutes during active sessions
+        schedule.every(15).minutes.do(self.periodic_market_check)
 
         # Launch interactive 2-way Telegram chat listener in background thread
         try:
