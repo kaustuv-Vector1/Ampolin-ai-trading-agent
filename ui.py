@@ -781,50 +781,6 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
 </body>
 </html>
 """
-          </div>
-        </div>
-        <div class="text-[11px]">
-          <span class="text-gray-400 block font-semibold mb-1">Conviction &amp; R:R Ratio:</span>
-          <div class="flex justify-between text-gray-300">
-            <span>Score: <b class="text-purple-300">${(d.confidence * 100).toFixed(1)}%</b></span>
-            <span>R:R: <b class="text-blue-300">1:${d.risk_reward_ratio}</b></span>
-            <span>Horizon: <b class="text-amber-300">${d.holding_period_days} Days</b></span>
-          </div>
-        </div>
-        <div class="text-[11px]">
-          <span class="text-gray-400 block font-semibold mb-1">AI Thesis:</span>
-          <p class="text-gray-300 bg-dark-800 p-2 rounded leading-relaxed">${d.rationale}</p>
-        </div>
-        <div class="text-[11px]">
-          <span class="text-gray-400 block font-semibold mb-1">Invalidation / Risks:</span>
-          <p class="text-rose-300/80 bg-rose-950/20 border border-rose-900/30 p-2 rounded">${d.key_risks}</p>
-        </div>
-      `;
-    }
-
-    async function runEOD() {
-      const btn = document.getElementById('btn-eod');
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Reflecting...';
-
-      try {
-        const res = await fetch('/api/eod-reflection', { method: 'POST' });
-        const data = await res.json();
-        alert('EOD Post-Mortem Reflection Finished! Active rules verified and updated.');
-        await loadRules();
-      } catch (e) {
-        alert('EOD reflection error: ' + e);
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-microscope"></i> EOD Reflection';
-      }
-    }
-
-    window.onload = initDashboard;
-  </script>
-</body>
-</html>
-"""
 
 @app.on_event("startup")
 def on_startup():
