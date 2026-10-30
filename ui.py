@@ -200,7 +200,7 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Ampolin AI Trading Agent | NSE Equities Terminal</title>
+  <title>Ampolin AI Trading Agent | Terminal</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/png" href="/static/ampolin_icon_sq.png">
   <link rel="apple-touch-icon" href="/static/ampolin_icon_sq.png">
@@ -208,209 +208,195 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ampolin AI">
-  <meta name="theme-color" content="#0b0f17">
+  <meta name="theme-color" content="#000000">
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: { 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
-            dark: { 900: '#0b0f17', 800: '#111827', 700: '#1f2937', 600: '#374151' }
-          }
-        }
-      }
-    }
-  </script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
-    body { background-color: #0b0f17; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .card-glow { box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5); }
-    .neon-border { border: 1px solid rgba(59, 130, 246, 0.25); }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+    body { background-color: #000000; font-family: -apple-system, BlinkMacSystemFont, "Geist", "Inter", "Segoe UI", Roboto, sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: #000000; }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+    .border-subtle { border-color: #27272a; }
   </style>
 </head>
-<body class="text-gray-200 min-h-screen flex flex-col">
+<body class="bg-black text-zinc-300 min-h-screen flex flex-col antialiased selection:bg-white selection:text-black">
 
-  <!-- Top Navigation Header -->
-  <header class="bg-dark-800 border-b border-dark-700 px-6 py-4 flex flex-wrap justify-between items-center sticky top-0 z-50">
-    <div class="flex items-center space-x-3">
-      <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-10 h-10 rounded-xl shadow-lg border border-blue-500/30 object-cover">
+  <!-- Top Minimalist Header -->
+  <header class="bg-black border-b border-zinc-800/80 px-6 py-4 flex flex-wrap justify-between items-center sticky top-0 z-50">
+    <div class="flex items-center space-x-3.5">
+      <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-8 h-8 rounded-lg border border-zinc-700 object-cover">
       <div>
-        <h1 class="text-xl font-black tracking-wide text-white flex items-center gap-2">
-          AMPOLIN <span class="text-blue-500 font-medium text-sm px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">AI TRADING AGENT</span>
+        <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
+          AMPOLIN <span class="text-zinc-400 font-normal text-xs px-2 py-0.5 rounded border border-zinc-800 bg-zinc-900/60 mono">AI TRADING</span>
         </h1>
-        <p class="text-xs text-gray-400">Automated Indian Equities (NSE) Swing System &bull; DhanHQ &bull; Gemini 3.8 Flash</p>
+        <p class="text-[11px] text-zinc-500 tracking-wide">Autonomous Dual-Market Terminal &bull; NSE &amp; Wall Street</p>
       </div>
     </div>
 
-    <!-- Live Status Badges -->
-    <div class="flex items-center gap-4 text-xs mt-2 sm:mt-0">
-      <div class="flex items-center gap-2 bg-dark-900/80 px-3 py-1.5 rounded-lg border border-dark-700">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span class="text-gray-400">Engine:</span>
-        <span class="font-semibold text-emerald-400" id="badge-engine">ACTIVE</span>
+    <!-- Live Status Badges (Monochrome) -->
+    <div class="flex items-center gap-3 text-xs mt-2 sm:mt-0">
+      <div class="flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-md border border-zinc-800">
+        <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+        <span class="text-zinc-500 text-[11px]">Engine:</span>
+        <span class="font-medium text-white mono text-[11px]" id="badge-engine">ACTIVE</span>
       </div>
-      <div class="flex items-center gap-2 bg-dark-900/80 px-3 py-1.5 rounded-lg border border-dark-700">
-        <i class="fa-solid fa-brain text-purple-400"></i>
-        <span class="text-gray-400">Brain:</span>
-        <span class="font-semibold text-purple-300" id="badge-brain">Gemini Flash</span>
+      <div class="flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-md border border-zinc-800">
+        <span class="text-zinc-500 text-[11px]">Brain:</span>
+        <span class="font-medium text-zinc-200 mono text-[11px]" id="badge-brain">gemini-3.5-flash-lite</span>
       </div>
-      <div class="flex items-center gap-2 bg-dark-900/80 px-3 py-1.5 rounded-lg border border-dark-700">
-        <i class="fa-solid fa-shield-halved text-blue-400"></i>
-        <span class="text-gray-400">Risk Rule:</span>
-        <span class="font-semibold text-blue-300">1% Max Account Risk</span>
+      <div class="flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-md border border-zinc-800">
+        <span class="text-zinc-500 text-[11px]">Risk:</span>
+        <span class="font-medium text-zinc-200 mono text-[11px]">1.0% Max</span>
       </div>
-      <div class="flex items-center gap-2 bg-dark-900/80 px-3 py-1.5 rounded-lg border border-dark-700">
-        <i class="fa-solid fa-clock text-amber-400"></i>
-        <span id="live-time" class="font-mono text-gray-300">--:--:-- IST</span>
+      <div class="flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-md border border-zinc-800">
+        <span id="live-time" class="mono text-zinc-400 text-[11px]">--:--:-- IST</span>
       </div>
     </div>
   </header>
 
-  <!-- Metric Overview Bar -->
-  <div class="max-w-7xl mx-auto w-full px-6 pt-6 grid grid-cols-2 md:grid-cols-5 gap-4">
-    <div class="bg-dark-800 p-4 rounded-xl border border-dark-700 card-glow">
-      <div class="flex justify-between items-center text-gray-400 text-xs mb-1">
-        <span>DAILY REALIZED P&L</span>
-        <i class="fa-solid fa-indian-rupee-sign text-emerald-400"></i>
+  <!-- Metric Overview Bar (Minimalist Cards) -->
+  <div class="max-w-7xl mx-auto w-full px-6 pt-6 grid grid-cols-2 md:grid-cols-5 gap-3.5">
+    <div class="bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
+      <div class="flex justify-between items-center text-zinc-500 text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Daily Realized P&amp;L</span>
+        <i class="fa-solid fa-chart-line text-zinc-600"></i>
       </div>
-      <div class="text-2xl font-bold text-emerald-400" id="metric-pnl">₹0.00</div>
-      <div class="text-[11px] text-gray-500 mt-1">NSE CNC Swing Positions</div>
+      <div class="text-2xl font-bold text-white mono" id="metric-pnl">₹0.00</div>
+      <div class="text-[11px] text-zinc-600 mt-1">Cash Delivery Positions</div>
     </div>
 
-    <div class="bg-dark-800 p-4 rounded-xl border border-dark-700 card-glow">
-      <div class="flex justify-between items-center text-gray-400 text-xs mb-1">
-        <span>MARKET BREADTH</span>
-        <i class="fa-solid fa-chart-simple text-blue-400"></i>
+    <div class="bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
+      <div class="flex justify-between items-center text-zinc-500 text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Market Breadth</span>
+        <i class="fa-solid fa-bars-progress text-zinc-600"></i>
       </div>
-      <div class="text-2xl font-bold text-blue-400" id="metric-breadth">--%</div>
-      <div class="text-[11px] text-gray-500 mt-1" id="metric-breadth-regime">Nifty 50 > 50 EMA</div>
+      <div class="text-2xl font-bold text-white mono" id="metric-breadth">--%</div>
+      <div class="text-[11px] text-zinc-600 mt-1" id="metric-breadth-regime">Nifty 50 &gt; 50 EMA</div>
     </div>
 
-    <div class="bg-dark-800 p-4 rounded-xl border border-dark-700 card-glow">
-      <div class="flex justify-between items-center text-gray-400 text-xs mb-1">
-        <span>INDIA VIX VOLATILITY</span>
-        <i class="fa-solid fa-gauge-high text-amber-400"></i>
+    <div class="bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
+      <div class="flex justify-between items-center text-zinc-500 text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>India VIX</span>
+        <i class="fa-solid fa-bolt text-zinc-600"></i>
       </div>
-      <div class="text-2xl font-bold text-amber-400" id="metric-vix">--</div>
-      <div class="text-[11px] text-gray-500 mt-1" id="metric-dynamic-risk">Dynamic Risk: --%</div>
+      <div class="text-2xl font-bold text-white mono" id="metric-vix">--</div>
+      <div class="text-[11px] text-zinc-600 mt-1" id="metric-dynamic-risk">Risk: --%</div>
     </div>
 
-    <div class="bg-dark-800 p-4 rounded-xl border border-dark-700 card-glow">
-      <div class="flex justify-between items-center text-gray-400 text-xs mb-1">
-        <span>STRATEGY WIN RATE</span>
-        <i class="fa-solid fa-percent text-purple-400"></i>
+    <div class="bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
+      <div class="flex justify-between items-center text-zinc-500 text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Strategy Win Rate</span>
+        <i class="fa-solid fa-bullseye text-zinc-600"></i>
       </div>
-      <div class="text-2xl font-bold text-purple-400" id="metric-winrate">0.0%</div>
-      <div class="text-[11px] text-gray-500 mt-1">VectorBT Filtered (&ge;45%)</div>
+      <div class="text-2xl font-bold text-white mono" id="metric-winrate">0.0%</div>
+      <div class="text-[11px] text-zinc-600 mt-1">VectorBT Filtered (&ge;52%)</div>
     </div>
 
-    <div class="bg-dark-800 p-4 rounded-xl border border-dark-700 card-glow">
-      <div class="flex justify-between items-center text-gray-400 text-xs mb-1">
-        <span>ACTIVE POSITIONS</span>
-        <i class="fa-solid fa-layer-group text-emerald-400"></i>
+    <div class="bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
+      <div class="flex justify-between items-center text-zinc-500 text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Active Positions</span>
+        <i class="fa-solid fa-layer-group text-zinc-600"></i>
       </div>
-      <div class="text-2xl font-bold text-white" id="metric-open-trades">0</div>
-      <div class="text-[11px] text-gray-500 mt-1">1R Breakeven & 2R Scaling</div>
+      <div class="text-2xl font-bold text-white mono" id="metric-open-trades">0</div>
+      <div class="text-[11px] text-zinc-600 mt-1">1R Breakeven &bull; 3.5% Lock</div>
     </div>
   </div>
 
   <!-- Primary Action & Control Toolbar -->
-  <div class="max-w-7xl mx-auto w-full px-6 py-6 flex flex-wrap gap-4 items-center justify-between">
-    <div class="flex items-center gap-3">
-      <button onclick="runPipeline()" id="btn-pipeline" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-blue-500/25 flex items-center gap-2 transition active:scale-95 text-sm">
-        <i class="fa-solid fa-play"></i> Run Full Autonomous Pipeline
+  <div class="max-w-7xl mx-auto w-full px-6 py-5 flex flex-wrap gap-3 items-center justify-between">
+    <div class="flex items-center gap-2.5 flex-wrap">
+      <button onclick="runPipeline()" id="btn-pipeline" class="bg-white hover:bg-zinc-200 text-black font-semibold px-4 py-2 rounded-lg text-xs tracking-wide flex items-center gap-2 transition active:scale-95 shadow-sm">
+        <i class="fa-solid fa-play text-[10px]"></i> Run Autonomous Pipeline
       </button>
 
-      <button onclick="runScan()" id="btn-scan" class="bg-dark-700 hover:bg-dark-600 text-gray-200 font-medium px-4 py-2.5 rounded-xl border border-dark-600 flex items-center gap-2 transition text-sm">
-        <i class="fa-solid fa-magnifying-glass"></i> Scan Candidates
+      <button onclick="runScan()" id="btn-scan" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg border border-zinc-800 flex items-center gap-2 transition text-xs">
+        <i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan Candidates
       </button>
 
-      <button onclick="managePositions()" id="btn-manage" class="bg-dark-700 hover:bg-dark-600 text-emerald-400 font-medium px-4 py-2.5 rounded-xl border border-dark-600 flex items-center gap-2 transition text-sm">
-        <i class="fa-solid fa-arrows-split-up-and-left"></i> Manage Positions (1R/2R)
+      <button onclick="managePositions()" id="btn-manage" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg border border-zinc-800 flex items-center gap-2 transition text-xs">
+        <i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Sweep Stops &amp; Profit Lock
       </button>
 
-      <button onclick="runEOD()" id="btn-eod" class="bg-dark-700 hover:bg-dark-600 text-amber-300 font-medium px-4 py-2.5 rounded-xl border border-dark-600 flex items-center gap-2 transition text-sm">
-        <i class="fa-solid fa-microscope"></i> EOD Reflection
+      <button onclick="runEOD()" id="btn-eod" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-medium px-3 py-2 rounded-lg border border-zinc-800 flex items-center gap-2 transition text-xs">
+        <i class="fa-solid fa-microscope text-[10px]"></i> EOD Reflection
       </button>
     </div>
 
-    <div class="flex items-center gap-3 text-xs">
-      <div class="flex items-center bg-dark-800 px-3 py-2 rounded-xl border border-dark-700 gap-2">
-        <span class="text-gray-400">Timeframe:</span>
-        <select id="select-tf" class="bg-dark-900 border border-dark-600 rounded px-2 py-1 text-white font-mono focus:outline-none">
-          <option value="1d" selected>1D (Daily Candles)</option>
-          <option value="4h">4H (Swing Momentum)</option>
+    <div class="flex items-center gap-2.5 text-xs">
+      <div class="flex items-center bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 gap-2">
+        <span class="text-zinc-500 text-[11px]">Timeframe:</span>
+        <select id="select-tf" class="bg-transparent border-0 text-white mono text-xs focus:outline-none cursor-pointer">
+          <option value="1d" selected class="bg-zinc-900">1D (Daily)</option>
+          <option value="4h" class="bg-zinc-900">4H (Swing)</option>
         </select>
       </div>
 
-      <div class="flex items-center bg-dark-800 px-3 py-2 rounded-xl border border-dark-700 gap-2">
-        <span class="text-gray-400">Mode:</span>
-        <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-medium">Paper Trading (Safe)</span>
+      <div class="flex items-center bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 gap-2">
+        <span class="text-zinc-500 text-[11px]">Mode:</span>
+        <span class="text-zinc-300 border border-zinc-700/80 bg-zinc-900/80 px-2 py-0.5 rounded text-[11px] mono font-medium">Paper Trading</span>
       </div>
     </div>
   </div>
 
   <!-- Main Content Layout Grid -->
-  <main class="max-w-7xl mx-auto w-full px-6 pb-12 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <main class="max-w-7xl mx-auto w-full px-6 pb-12 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-5">
 
     <!-- Left 2 Columns: Live Candidates, VectorBT Verification & AI Decisions -->
-    <div class="lg:col-span-2 space-y-6">
+    <div class="lg:col-span-2 space-y-5">
 
       <!-- Candidate Setups & Backtests Section -->
-      <section class="bg-dark-800 rounded-2xl border border-dark-700 p-5 card-glow">
-        <div class="flex justify-between items-center mb-4">
+      <section class="bg-zinc-950 rounded-xl border border-zinc-800/80 p-5">
+        <div class="flex justify-between items-center mb-3.5">
           <div>
-            <h2 class="text-base font-bold text-white flex items-center gap-2">
-              <i class="fa-solid fa-crosshairs text-blue-400"></i> Candidate Breakout Setups & VectorBT Sandbox
+            <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+              <i class="fa-solid fa-crosshairs text-zinc-400"></i> Candidate Breakouts &bull; VectorBT Verification
             </h2>
-            <p class="text-xs text-gray-400">EMA 20/50 + RSI (48-68) + ATR Breakouts verified over past 90 days</p>
+            <p class="text-[11px] text-zinc-500 mt-0.5">EMA 20/50 + RSI (48-68) + Multi-Timeframe Weekly Confluence</p>
           </div>
-          <span class="text-xs font-mono bg-dark-900 px-2 py-1 rounded text-gray-400" id="scan-count">0 candidates</span>
+          <span class="text-[11px] mono bg-zinc-900 px-2 py-0.5 rounded text-zinc-400 border border-zinc-800" id="scan-count">0 candidates</span>
         </div>
 
-        <div id="candidates-container" class="space-y-3 max-h-[460px] overflow-y-auto pr-1">
-          <div class="text-center py-10 text-gray-500 text-sm">
-            <i class="fa-solid fa-radar fa-spin text-3xl mb-3 text-dark-600 block"></i>
-            Click "Run Full Autonomous Pipeline" or "Scan Candidates" to analyze Nifty 50 stocks.
+        <div id="candidates-container" class="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+          <div class="text-center py-12 text-zinc-600 text-xs">
+            <i class="fa-solid fa-compass text-2xl mb-2 text-zinc-700 block"></i>
+            Click "Run Autonomous Pipeline" or "Scan Candidates" to analyze the universe.
           </div>
         </div>
       </section>
 
       <!-- Active SQLite Trades Log -->
-      <section class="bg-dark-800 rounded-2xl border border-dark-700 p-5 card-glow">
-        <div class="flex justify-between items-center mb-4">
+      <section class="bg-zinc-950 rounded-xl border border-zinc-800/80 p-5">
+        <div class="flex justify-between items-center mb-3.5">
           <div>
-            <h2 class="text-base font-bold text-white flex items-center gap-2">
-              <i class="fa-solid fa-database text-purple-400"></i> Trade History (SQLite: trades.db)
+            <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+              <i class="fa-solid fa-database text-zinc-400"></i> Executed Trades &bull; SQLite Audit
             </h2>
-            <p class="text-xs text-gray-400">Audit trail of automated CNC Delivery orders with 1% risk budgeting</p>
+            <p class="text-[11px] text-zinc-500 mt-0.5">Real-time database tracking of paper &amp; live swing positions</p>
           </div>
-          <button onclick="loadTrades()" class="text-xs text-blue-400 hover:underline flex items-center gap-1">
-            <i class="fa-solid fa-arrows-rotate"></i> Refresh
+          <button onclick="loadTrades()" class="text-xs text-zinc-400 hover:text-white flex items-center gap-1 transition">
+            <i class="fa-solid fa-arrows-rotate text-[10px]"></i> Refresh
           </button>
         </div>
 
         <div class="overflow-x-auto">
-          <table class="w-full text-xs text-left text-gray-300">
-            <thead class="bg-dark-900 text-gray-400 uppercase font-mono border-b border-dark-700">
+          <table class="w-full text-xs text-left text-zinc-300">
+            <thead class="bg-zinc-900/80 text-zinc-500 uppercase mono text-[10px] tracking-wider border-b border-zinc-800">
               <tr>
-                <th class="py-2.5 px-3">Ticker</th>
-                <th class="py-2.5 px-3">Action</th>
-                <th class="py-2.5 px-3">Qty</th>
-                <th class="py-2.5 px-3">Entry</th>
-                <th class="py-2.5 px-3">Stop Loss</th>
-                <th class="py-2.5 px-3">Take Profit</th>
-                <th class="py-2.5 px-3">Risk (1%)</th>
-                <th class="py-2.5 px-3">Status</th>
+                <th class="py-2 px-3">Ticker</th>
+                <th class="py-2 px-3">Action</th>
+                <th class="py-2 px-3">Qty</th>
+                <th class="py-2 px-3">Entry</th>
+                <th class="py-2 px-3">Stop Loss</th>
+                <th class="py-2 px-3">Target</th>
+                <th class="py-2 px-3">Risk</th>
+                <th class="py-2 px-3">Status</th>
               </tr>
             </thead>
-            <tbody id="trades-tbody" class="divide-y divide-dark-700/50">
+            <tbody id="trades-tbody" class="divide-y divide-zinc-850">
               <tr>
-                <td colspan="8" class="text-center py-6 text-gray-500">No trades recorded in database yet.</td>
+                <td colspan="8" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td>
               </tr>
             </tbody>
           </table>
@@ -420,101 +406,105 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
     </div>
 
     <!-- Right 1 Column: Gemini AI Brain Decision & Active Rules -->
-    <div class="space-y-6">
+    <div class="space-y-5">
 
       <!-- Gemini AI Brain Highlight Card -->
-      <section class="bg-dark-800 rounded-2xl border border-dark-700 p-5 card-glow">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-bold text-white flex items-center gap-2">
-            <i class="fa-solid fa-brain text-purple-400"></i> Gemini 3.8 Flash Brain
+      <section class="bg-zinc-950 rounded-xl border border-zinc-800/80 p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+            <i class="fa-solid fa-brain text-zinc-400"></i> Gemini AI Decision
           </h2>
-          <span class="text-[10px] bg-purple-500/10 text-purple-300 border border-purple-500/20 px-2 py-0.5 rounded uppercase font-mono">Pydantic JSON</span>
+          <span class="text-[10px] bg-zinc-900 text-zinc-300 border border-zinc-800 px-2 py-0.5 rounded mono uppercase">Strict Pydantic</span>
         </div>
-        <p class="text-xs text-gray-400 mb-4">Evaluates backtest edge, technical structure, and validates R:R &ge; 1:1.5 before order dispatch.</p>
+        <p class="text-[11px] text-zinc-500 mb-3.5">Evaluates news catalysts, insider filings, and VectorBT edge.</p>
 
-        <div id="ai-decision-card" class="bg-dark-900 rounded-xl p-4 border border-dark-700 text-xs space-y-3">
-          <div class="text-gray-500 text-center py-6">
-            <i class="fa-solid fa-microchip text-2xl text-dark-600 block mb-2"></i>
+        <div id="ai-decision-card" class="bg-black rounded-lg p-3.5 border border-zinc-800/80 text-xs space-y-2.5">
+          <div class="text-zinc-600 text-center py-8">
+            <i class="fa-solid fa-microchip text-xl text-zinc-700 block mb-2"></i>
             Awaiting setup evaluation from pipeline.
           </div>
         </div>
       </section>
 
       <!-- Active Rules & Self-Refining Parameters -->
-      <section class="bg-dark-800 rounded-2xl border border-dark-700 p-5 card-glow">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-base font-bold text-white flex items-center gap-2">
-            <i class="fa-solid fa-sliders text-amber-400"></i> Active Rules & Insights
+      <section class="bg-zinc-950 rounded-xl border border-zinc-800/80 p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-zinc-400"></i> Active Parameters
           </h2>
-          <span class="text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/20 px-2 py-0.5 rounded font-mono">active_rules.json</span>
+          <span class="text-[10px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2 py-0.5 rounded mono">active_rules.json</span>
         </div>
-        <p class="text-xs text-gray-400 mb-3">Dynamically tuned by daily EOD reflection post-mortems.</p>
+        <p class="text-[11px] text-zinc-500 mb-3">Self-tuned by daily 15:45 IST post-mortem reflections.</p>
 
-        <div id="rules-container" class="space-y-2 text-xs">
-          <div class="flex justify-between py-1 border-b border-dark-700/50">
-            <span class="text-gray-400">Moving Averages:</span>
-            <span class="font-mono text-white">EMA 20 &bull; EMA 50</span>
+        <div id="rules-container" class="space-y-1.5 text-xs">
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Trend Filter:</span>
+            <span class="mono text-zinc-200">20 EMA &bull; 50 EMA</span>
           </div>
-          <div class="flex justify-between py-1 border-b border-dark-700/50">
-            <span class="text-gray-400">RSI Momentum Zone:</span>
-            <span class="font-mono text-white">48.0 &ndash; 68.0</span>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">RSI Momentum Zone:</span>
+            <span class="mono text-zinc-200">48.0 &ndash; 68.0</span>
           </div>
-          <div class="flex justify-between py-1 border-b border-dark-700/50">
-            <span class="text-gray-400">Min VectorBT Win Rate:</span>
-            <span class="font-mono text-emerald-400">&ge; 45.0%</span>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Min VectorBT Win Rate:</span>
+            <span class="mono text-white font-medium">&ge; 52.0%</span>
           </div>
-          <div class="flex justify-between py-1 border-b border-dark-700/50">
-            <span class="text-gray-400">Max Risk Per Trade:</span>
-            <span class="font-mono text-blue-400">1.0% of Capital</span>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Min Profit Factor:</span>
+            <span class="mono text-white font-medium">&ge; 1.50</span>
           </div>
-          <div class="flex justify-between py-1 border-b border-dark-700/50">
-            <span class="text-gray-400">Stop Loss Distance:</span>
-            <span class="font-mono text-white">1.5x ATR</span>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Anti-Chasing Ceiling:</span>
+            <span class="mono text-zinc-200">&le; 2.2% of 20 EMA</span>
           </div>
-          <div class="flex justify-between py-1 border-b border-dark-700/50">
-            <span class="text-gray-400">Execution Product:</span>
-            <span class="font-mono text-amber-300">CNC Delivery (GTT OCO)</span>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Profit Ratchet:</span>
+            <span class="mono text-white">+3.5% (locks +2.0%)</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Execution Segment:</span>
+            <span class="mono text-zinc-300">CNC Delivery (Zero Leverage)</span>
           </div>
         </div>
 
-        <div class="mt-4 pt-3 border-t border-dark-700">
-          <h3 class="text-xs font-semibold text-gray-300 mb-1 flex items-center gap-1">
-            <i class="fa-solid fa-lightbulb text-amber-400"></i> Learned Insights:
+        <div class="mt-4 pt-3 border-t border-zinc-850">
+          <h3 class="text-xs font-medium text-zinc-400 mb-1 flex items-center gap-1.5">
+            <i class="fa-regular fa-lightbulb text-zinc-400"></i> Experiential Learnings:
           </h3>
-          <ul id="insights-list" class="text-[11px] text-gray-400 space-y-1 list-disc list-inside">
-            <li>Baseline active. EMA 20/50 + RSI 48-68 avoids tops.</li>
+          <ul id="insights-list" class="text-[11px] text-zinc-500 space-y-1 list-disc list-inside">
+            <li>Baseline active. Multi-timeframe weekly alignment active.</li>
           </ul>
         </div>
       </section>
 
       <!-- Telegram & Broker Health Card -->
-      <section class="bg-dark-800 rounded-2xl border border-dark-700 p-5 card-glow text-xs space-y-2">
-        <h2 class="text-base font-bold text-white mb-2 flex items-center gap-2">
-          <i class="fa-solid fa-network-wired text-blue-400"></i> Integrations
+      <section class="bg-zinc-950 rounded-xl border border-zinc-800/80 p-5 text-xs space-y-2">
+        <h2 class="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+          <i class="fa-solid fa-link text-zinc-400"></i> Connected Services
         </h2>
-        <div class="flex justify-between py-1">
-          <span class="text-gray-400">Broker:</span>
-          <span class="font-semibold text-blue-400">DhanHQ API (NSE CNC)</span>
+        <div class="flex justify-between py-1 border-b border-zinc-850">
+          <span class="text-zinc-500">Broker:</span>
+          <span class="font-medium text-white mono">DhanHQ API (Client: 1109569577)</span>
+        </div>
+        <div class="flex justify-between py-1 border-b border-zinc-850">
+          <span class="text-zinc-500">AI Intelligence:</span>
+          <span class="font-medium text-zinc-200 mono">Google Gemini 3.5</span>
+        </div>
+        <div class="flex justify-between py-1 border-b border-zinc-850">
+          <span class="text-zinc-500">Alerts &amp; 2-Way Chat:</span>
+          <span class="font-medium text-white mono">@AmpolinTradingBot</span>
         </div>
         <div class="flex justify-between py-1">
-          <span class="text-gray-400">AI SDK:</span>
-          <span class="font-semibold text-purple-300">official google-genai 2.34</span>
-        </div>
-        <div class="flex justify-between py-1">
-          <span class="text-gray-400">Alerts:</span>
-          <span class="font-semibold text-emerald-400">Telegram Bot (Daily P&L)</span>
-        </div>
-        <div class="flex justify-between py-1">
-          <span class="text-gray-400">Backtester:</span>
-          <span class="font-semibold text-amber-300">VectorBT &amp; Numba JIT</span>
+          <span class="text-zinc-500">Cloud Infrastructure:</span>
+          <span class="font-medium text-zinc-300 mono">Google Cloud Run (asia-south1)</span>
         </div>
       </section>
 
     </div>
   </main>
 
-  <footer class="bg-dark-800 border-t border-dark-700 py-3 text-center text-xs text-gray-500">
-    Ampolin AI Trading Agent &bull; Indian Equities Automated Swing System &bull; Active &amp; Verified
+  <footer class="bg-black border-t border-zinc-850 py-4 text-center text-xs text-zinc-600 mono">
+    AMPOLIN AI TRADING AGENT &bull; MINIMALIST HIGH-PRECISION SYSTEM &bull; 24/7 DUAL-MARKET
   </footer>
 
   <script>
@@ -538,7 +528,9 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       try {
         const res = await fetch('/api/status');
         const data = await res.json();
-        document.getElementById('metric-pnl').innerText = '₹' + data.daily_pnl.toFixed(2);
+        const pnl = data.daily_pnl || 0.0;
+        const pnlSign = pnl >= 0 ? '+' : '';
+        document.getElementById('metric-pnl').innerText = pnlSign + '₹' + pnl.toFixed(2);
         document.getElementById('metric-winrate').innerText = (data.win_rate * 100).toFixed(1) + '%';
         document.getElementById('metric-open-trades').innerText = data.open_positions;
         document.getElementById('badge-brain').innerText = data.ai_model;
@@ -557,7 +549,7 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
     async function managePositions() {
       const btn = document.getElementById('btn-manage');
       btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Managing...';
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sweeping...';
 
       try {
         const res = await fetch('/api/manage-positions', { method: 'POST' });
@@ -569,7 +561,7 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         alert('Position management error: ' + e);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-arrows-split-up-and-left"></i> Manage Positions (1R/2R)';
+        btn.innerHTML = '<i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Sweep Stops & Profit Lock';
       }
     }
 
@@ -592,22 +584,25 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         const data = await res.json();
         const tbody = document.getElementById('trades-tbody');
         if (!data.trades || data.trades.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-gray-500">No trades recorded in database yet.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td></tr>';
           return;
         }
 
-        tbody.innerHTML = data.trades.map(t => `
-          <tr class="hover:bg-dark-700/30 transition font-mono">
-            <td class="py-2 px-3 font-bold text-white">${t.ticker}</td>
-            <td class="py-2 px-3"><span class="${t.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'} font-semibold">${t.action}</span></td>
-            <td class="py-2 px-3">${t.quantity}</td>
-            <td class="py-2 px-3">₹${t.entry_price}</td>
-            <td class="py-2 px-3 text-rose-400">₹${t.stop_loss}</td>
-            <td class="py-2 px-3 text-emerald-400">₹${t.take_profit}</td>
-            <td class="py-2 px-3 text-blue-300">₹${t.risk_amount}</td>
-            <td class="py-2 px-3"><span class="px-1.5 py-0.5 rounded text-[10px] ${t.status === 'CLOSED' ? 'bg-gray-700 text-gray-300' : 'bg-emerald-500/20 text-emerald-300'}">${t.status}</span></td>
-          </tr>
-        `).join('');
+        tbody.innerHTML = data.trades.map(t => {
+          const sym = t.ticker.endsWith('.NS') ? '₹' : '$';
+          return `
+            <tr class="hover:bg-zinc-900/60 transition mono text-xs">
+              <td class="py-2.5 px-3 font-semibold text-white">${t.ticker}</td>
+              <td class="py-2.5 px-3"><span class="font-bold text-white">${t.action}</span></td>
+              <td class="py-2.5 px-3 text-zinc-300">${t.quantity}</td>
+              <td class="py-2.5 px-3 text-zinc-300">${sym}${t.entry_price}</td>
+              <td class="py-2.5 px-3 text-zinc-400">${sym}${t.stop_loss}</td>
+              <td class="py-2.5 px-3 text-white font-medium">${sym}${t.take_profit}</td>
+              <td class="py-2.5 px-3 text-zinc-400">${sym}${t.risk_amount}</td>
+              <td class="py-2.5 px-3"><span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-800 bg-zinc-900 text-zinc-300">${t.status}</span></td>
+            </tr>
+          `;
+        }).join('');
       } catch (e) {
         console.error('Trades fetch failed:', e);
       }
@@ -617,7 +612,7 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       const btn = document.getElementById('btn-pipeline');
       const tf = document.getElementById('select-tf').value;
       btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running Autonomous Pipeline...';
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-black"></i> Executing Pipeline...';
 
       try {
         const res = await fetch('/api/run-pipeline', {
@@ -626,14 +621,14 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
           body: JSON.stringify({ timeframe: tf, dry_run: true })
         });
         const data = await res.json();
-        await runScan(); // refresh candidate view
+        await runScan();
         await loadStatus();
         await loadTrades();
       } catch (e) {
         alert('Pipeline execution error: ' + e);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-play"></i> Run Full Autonomous Pipeline';
+        btn.innerHTML = '<i class="fa-solid fa-play text-[10px]"></i> Run Autonomous Pipeline';
       }
     }
 
@@ -655,7 +650,7 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         alert('Scan error: ' + e);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Scan Candidates';
+        btn.innerHTML = '<i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan Candidates';
       }
     }
 
@@ -665,9 +660,9 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
 
       if (!approvedList || approvedList.length === 0) {
         container.innerHTML = `
-          <div class="text-center py-10 text-gray-400 text-xs">
-            <i class="fa-solid fa-shield-cat text-2xl mb-2 text-dark-600 block"></i>
-            No candidate stocks met the combined criteria: EMA 20/50 + RSI (48-68) + ATR Breakout + VectorBT Expectancy &gt; 0 and Win Rate &ge; 45%.
+          <div class="text-center py-12 text-zinc-600 text-xs">
+            <i class="fa-solid fa-shield text-xl mb-2 text-zinc-700 block"></i>
+            No candidate setups satisfied the strict criteria: EMA 20/50 + RSI 48-68 + VectorBT Win Rate &ge; 52% + Weekly Confluence.
           </div>`;
         return;
       }
@@ -676,54 +671,55 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         const s = item.setup;
         const b = item.backtest;
         const d = item.decision;
+        const sym = s.currency === 'USD' ? '$' : '₹';
 
         return `
-          <div class="bg-dark-900 rounded-xl p-4 border border-dark-700 hover:border-blue-500/40 transition">
+          <div class="bg-black rounded-lg p-3.5 border border-zinc-800/80 hover:border-zinc-700 transition">
             <div class="flex justify-between items-start mb-2">
               <div>
-                <span class="text-base font-bold text-white font-mono">${s.ticker}</span>
-                <span class="ml-2 text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded">${s.breakout_type}</span>
+                <span class="text-sm font-bold text-white mono">${s.ticker}</span>
+                <span class="ml-2 text-[10px] bg-zinc-900 text-zinc-300 border border-zinc-800 px-1.5 py-0.5 rounded mono">${s.breakout_type}</span>
+                ${s.weekly_trend === 'BULLISH_CONFLUENCE' ? '<span class="ml-1 text-[10px] bg-zinc-850 text-white border border-zinc-700 px-1.5 py-0.5 rounded mono">1W CONFLUENCE</span>' : ''}
               </div>
               <div class="text-right">
-                <div class="text-base font-bold text-white font-mono">₹${s.close}</div>
-                <div class="text-[10px] text-gray-400">ATR: ₹${s.atr}</div>
+                <div class="text-sm font-bold text-white mono">${sym}${s.close}</div>
+                <div class="text-[10px] text-zinc-500">ATR: ${sym}${s.atr}</div>
               </div>
             </div>
 
-            <!-- Technical Gauges -->
-            <div class="grid grid-cols-4 gap-2 text-[11px] bg-dark-800/80 p-2.5 rounded-lg border border-dark-700/50 mb-3">
+            <!-- Technical Gauges (Minimalist Monochrome) -->
+            <div class="grid grid-cols-4 gap-2 text-[11px] bg-zinc-950 p-2 rounded border border-zinc-850 mb-2.5 mono">
               <div>
-                <span class="text-gray-400 block text-[10px]">EMA 20 / 50</span>
-                <span class="font-mono text-emerald-400">₹${s.ema_fast} &gt; ₹${s.ema_slow}</span>
+                <span class="text-zinc-600 block text-[9px] uppercase tracking-wider">EMA 20/50</span>
+                <span class="text-zinc-200">${sym}${s.ema_fast} &gt; ${sym}${s.ema_slow}</span>
               </div>
               <div>
-                <span class="text-gray-400 block text-[10px]">RSI (14)</span>
-                <span class="font-mono text-blue-300 font-bold">${s.rsi}</span>
+                <span class="text-zinc-600 block text-[9px] uppercase tracking-wider">RSI (14)</span>
+                <span class="text-white font-bold">${s.rsi}</span>
               </div>
               <div>
-                <span class="text-gray-400 block text-[10px]">VectorBT Win%</span>
-                <span class="font-mono text-emerald-400 font-bold">${(b.win_rate * 100).toFixed(1)}%</span>
+                <span class="text-zinc-600 block text-[9px] uppercase tracking-wider">VBT Win%</span>
+                <span class="text-white font-bold">${(b.win_rate * 100).toFixed(1)}%</span>
               </div>
               <div>
-                <span class="text-gray-400 block text-[10px]">Expectancy</span>
-                <span class="font-mono text-amber-300 font-bold">₹${b.expectancy.toFixed(2)}</span>
+                <span class="text-zinc-600 block text-[9px] uppercase tracking-wider">Expectancy</span>
+                <span class="text-white font-bold">${sym}${b.expectancy.toFixed(2)}</span>
               </div>
             </div>
 
             <!-- Latency & AI Conviction -->
-            <div class="flex justify-between items-center text-xs pt-1 border-t border-dark-700/40">
-              <span class="text-gray-400 flex items-center gap-1 text-[11px]">
-                <i class="fa-solid fa-stopwatch text-amber-400"></i> ${b.execution_time_ms} ms backtest
+            <div class="flex justify-between items-center text-xs pt-1 border-t border-zinc-850">
+              <span class="text-zinc-500 text-[10px] mono">
+                <i class="fa-solid fa-bolt text-zinc-600"></i> ${b.execution_time_ms}ms vectorized backtest
               </span>
-              <button onclick='displayAIDecision(${JSON.stringify(d).replace(/'/g, "&#39;")})' class="text-purple-400 hover:text-purple-300 text-[11px] font-semibold flex items-center gap-1">
-                View AI Decision (${(d.confidence * 100).toFixed(0)}% Conviction) <i class="fa-solid fa-arrow-right"></i>
+              <button onclick='displayAIDecision(${JSON.stringify(d).replace(/'/g, "&#39;")})' class="text-zinc-300 hover:text-white text-[11px] font-medium flex items-center gap-1 transition">
+                AI Evaluation (${(d.confidence * 100).toFixed(0)}% Conviction) <i class="fa-solid fa-arrow-right text-[9px]"></i>
               </button>
             </div>
           </div>
         `;
       }).join('');
 
-      // Auto display first AI decision
       if (approvedList.length > 0) {
         displayAIDecision(approvedList[0].decision);
       }
@@ -731,23 +727,60 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
 
     function displayAIDecision(d) {
       const card = document.getElementById('ai-decision-card');
+      const sym = d.ticker.endsWith('.NS') ? '₹' : '$';
       card.innerHTML = `
-        <div class="flex justify-between items-center border-b border-dark-700 pb-2">
-          <span class="font-mono font-bold text-white text-sm">${d.ticker}</span>
-          <span class="px-2 py-0.5 rounded text-xs font-bold ${d.action === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}">${d.action}</span>
+        <div class="flex justify-between items-center border-b border-zinc-850 pb-2">
+          <span class="mono font-bold text-white text-sm">${d.ticker}</span>
+          <span class="px-2 py-0.5 rounded text-xs font-bold border border-white bg-white text-black mono">${d.action}</span>
         </div>
-        <div class="grid grid-cols-3 gap-2 text-center py-2 bg-dark-800 rounded-lg">
+        <div class="grid grid-cols-3 gap-2 text-center py-2 bg-zinc-950 rounded border border-zinc-850 mono">
           <div>
-            <span class="text-[10px] text-gray-400 block">ENTRY</span>
-            <span class="font-mono font-bold text-white">₹${d.entry_price}</span>
+            <span class="text-[9px] text-zinc-500 block uppercase tracking-wider">ENTRY</span>
+            <span class="font-bold text-white">${sym}${d.entry_price}</span>
           </div>
           <div>
-            <span class="text-[10px] text-gray-400 block">STOP LOSS</span>
-            <span class="font-mono font-bold text-rose-400">₹${d.stop_loss}</span>
+            <span class="text-[9px] text-zinc-500 block uppercase tracking-wider">STOP LOSS</span>
+            <span class="font-bold text-zinc-400">${sym}${d.stop_loss}</span>
           </div>
           <div>
-            <span class="text-[10px] text-gray-400 block">TARGET (TP)</span>
-            <span class="font-mono font-bold text-emerald-400">₹${d.take_profit}</span>
+            <span class="text-[9px] text-zinc-500 block uppercase tracking-wider">TARGET</span>
+            <span class="font-bold text-white">${sym}${d.take_profit}</span>
+          </div>
+        </div>
+        <div class="text-[11px] text-zinc-400 leading-relaxed pt-1">
+          <span class="text-white font-medium">Thesis:</span> ${d.rationale}
+        </div>
+        <div class="text-[10px] text-zinc-500 mono pt-1 border-t border-zinc-850 flex justify-between">
+          <span>Confidence: ${(d.confidence * 100).toFixed(0)}%</span>
+          <span>R:R: 1:${d.risk_reward_ratio}</span>
+          <span>Hold: ~${d.holding_period_days}d</span>
+        </div>
+      `;
+    }
+
+    async function runEOD() {
+      const btn = document.getElementById('btn-eod');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Reflecting...';
+
+      try {
+        const res = await fetch('/api/eod-reflection', { method: 'POST' });
+        const data = await res.json();
+        alert('EOD Post-Mortem Reflection Finished! Active rules verified and updated.');
+        await loadRules();
+      } catch (e) {
+        alert('EOD reflection error: ' + e);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-microscope text-[10px]"></i> EOD Reflection';
+      }
+    }
+
+    window.onload = initDashboard;
+  </script>
+</body>
+</html>
+"""
           </div>
         </div>
         <div class="text-[11px]">
