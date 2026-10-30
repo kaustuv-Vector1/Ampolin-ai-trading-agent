@@ -215,7 +215,15 @@ class InteractiveTelegramBot:
             return
 
         msg = (
-            "📜 <b>ACTIVE TRADING & RISK RULES</b>\n\n"
+            "📜 <b>ACTIVE TRADING & RISK RULES (10/10)</b>\n\n"
+            "🛡️ <b>CAPITAL SECURITY & ANTI-DUMP CIRCUIT BREAKERS:</b>\n"
+            "• <b>Anti-Dump Cap:</b> Max 20% capital into any single stock (AI physically cannot dump 100% into one ticker)\n"
+            "• <b>Single-Share Veto:</b> Stock rejected if 1 share exceeds 20% of capital\n"
+            "• <b>Max Open Positions:</b> 4 concurrent stocks max (guarantees diversification)\n"
+            "• <b>Cash Reserve Floor:</b> 15% mandatory cash kept liquid at all times\n"
+            "• <b>Daily Drawdown Circuit Breaker:</b> 3% daily loss limit (trading halts immediately if breached)\n"
+            "• <b>Zero Leverage:</b> Cash CNC Delivery only (zero debt, zero liquidation risk)\n\n"
+            "🎯 <b>STRATEGY & EXECUTION RULES:</b>\n"
             "• <b>Risk per Trade:</b> 1.0% max (0.75% if India VIX > 15)\n"
             "• <b>Weekly Confluence:</b> 20 EMA > 50 EMA on 1wk required\n"
             "• <b>Anti-Chasing:</b> Max 2.2% distance from 20 EMA\n"
@@ -240,6 +248,9 @@ class InteractiveTelegramBot:
             "• <b>Primary Brain:</b> 🟢 Gemini 3.8 Flash (Active)\n"
             "• <b>Groq LPU Backup:</b> 🟢 Sub-100ms Ready (Qwen 3.8 27B)\n"
             "• <b>Execution Broker:</b> 🟢 DhanHQ Paper Sandbox (Zero Leverage CNC)\n"
+            "• <b>Anti-Dump Guard:</b> 🟢 20% Max Allocation per Stock Locked\n"
+            "• <b>Cash Safety Floor:</b> 🟢 15% Liquid Cushion Untouchable\n"
+            "• <b>Circuit Breaker:</b> 🟢 3% Max Daily Loss Halt Armed\n"
             f"• <b>Macro VIX Filter:</b> 🟢 {regime.india_vix} ({regime.vix_regime})\n"
             f"• <b>Options PCR Sentiment:</b> 🟢 {regime.pcr_ratio} ({regime.pcr_sentiment})\n"
             "• <b>Database State Engine:</b> 🟢 Auto-Persistent (JSON Snapshot Synced)\n"
@@ -330,9 +341,18 @@ CONVERSATION & GREETING RULES:
    - Explain the exact trade details (e.g. WIPRO.NS, AAPL, etc.), the price, the gain (e.g. +3.79%), and explain the mathematical rule that triggered (such as the +3.5% Profit Ratchet raising the stop loss to lock in a guaranteed +2.0% profit floor).
    - NEVER contradict recent alerts or claim to be sitting on 100% cash when alerts were dispatched or paper trades are active!
 3. MARKET HOURS & FUNDS AWARENESS: If Kaustuv asks whether market is closed or if these are US stocks, confirm NSE closed at 15:30 IST, and AAPL is a US tech stock that opens tonight at 19:30 IST. If asked about funds, cash, or invested capital, give the exact figures above immediately.
-4. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Seamlessly connect the dots without asking him to repeat himself.
-5. PROACTIVE FOLLOW-UPS: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, inspect a specific chart, or adjust profit lock parameters).
-6. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it under 2-3 short, easily scannable paragraphs on mobile Telegram.
+4. CAPITAL PROTECTION & ANTI-DUMP GUARANTEES: If Kaustuv asks about protecting his capital, or whether the AI can dump all his money into a stock:
+   - Reassure him emphatically: The AI is mathematically and architectural BLOCKED from ever dumping all capital into one stock.
+   - Explain the 5 hard capital security circuit breakers:
+     1. Max 20% Per Stock: Absolute hard ceiling. The system cannot allocate more than 20% of account equity to any single ticker.
+     2. Single-Share Veto: If 1 single share costs > 20% of account, the trade is rejected outright.
+     3. 15% Mandatory Cash Reserve: A 15% liquid buffer is untouchable, so the AI never runs out of cash.
+     4. Max 4 Open Positions: Forces strict portfolio diversification.
+     5. 3% Daily Loss Circuit Breaker: Trading shuts down automatically for the day if realized daily losses hit 3%.
+     6. Zero Leverage (CNC Delivery): No margin, no short borrowing, zero liquidation risk.
+5. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Seamlessly connect the dots without asking him to repeat himself.
+6. PROACTIVE FOLLOW-UPS: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, inspect a specific chart, or adjust profit lock parameters).
+7. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it under 2-3 short, easily scannable paragraphs on mobile Telegram.
 """
 
         try:

@@ -164,9 +164,18 @@ CONVERSATION & GREETING RULES:
    - Explain the exact trade details (e.g. WIPRO.NS, AAPL, etc.), current prices, and explain the mathematical rule that triggered (such as the +3.5% Profit Ratchet raising the stop loss to ₹193.9 to lock in a guaranteed +2.0% profit floor).
    - NEVER contradict recent alerts or claim to be sitting on 100% cash when alerts were dispatched or paper trades are active!
 3. MARKET HOURS & FUNDS AWARENESS: If Kaustuv asks whether market is closed or if these are US stocks, confirm NSE closed at 15:30 IST, and AAPL is a US tech leader that opens tonight at 19:30 IST. If asked about funds, cash, or invested capital, give the exact figures above immediately.
-4. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Reference earlier stocks, rules, or questions seamlessly without asking him to repeat himself.
-5. PROACTIVE ENGAGEMENT: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, review trailing stops, or inspect a specific chart).
-6. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it scannable on mobile.
+4. CAPITAL PROTECTION & ANTI-DUMP GUARANTEES: If Kaustuv asks about protecting capital, or whether the AI can dump all his money into a stock:
+   - Reassure him emphatically: The AI is mathematically and architecturally BLOCKED from ever dumping all capital into one stock.
+   - Detail the 5 hard capital security circuit breakers:
+     1. Max 20% Per Stock: Absolute hard cap. The system cannot allocate more than 20% of account equity to any single ticker.
+     2. Single-Share Veto: If 1 single share costs > 20% of account, the trade is rejected outright.
+     3. 15% Mandatory Cash Reserve: A 15% liquid buffer is untouchable, so the AI never runs out of cash.
+     4. Max 4 Open Positions: Forces strict portfolio diversification across non-correlated names.
+     5. 3% Daily Loss Circuit Breaker: Trading shuts down automatically for the day if realized daily losses hit 3%.
+     6. Zero Leverage (CNC Delivery): No margin, no short borrowing, zero liquidation risk.
+5. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Reference earlier stocks, rules, or questions seamlessly without asking him to repeat himself.
+6. PROACTIVE ENGAGEMENT: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, review trailing stops, or inspect a specific chart).
+7. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it scannable on mobile.
 """
     reply = llm_brain.generate_chat_response(user_prompt=user_msg, system_prompt=system_prompt, history=req.history)
     if not reply:
@@ -608,6 +617,22 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
           <div class="flex justify-between py-1 border-b border-zinc-850">
             <span class="text-zinc-500">Execution Segment:</span>
             <span class="mono text-zinc-300">CNC Delivery (Zero Leverage)</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Max Per-Stock Cap:</span>
+            <span class="mono text-emerald-400 font-semibold">20.0% (Anti-Dump Guard)</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Max Open Positions:</span>
+            <span class="mono text-zinc-200">4 Concurrent</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Cash Reserve Floor:</span>
+            <span class="mono text-zinc-200">15.0% Untouchable Cushion</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Daily Loss Circuit Breaker:</span>
+            <span class="mono text-red-400 font-semibold">-3.0% Auto-Halt Kill Switch</span>
           </div>
         </div>
 

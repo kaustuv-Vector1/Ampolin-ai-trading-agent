@@ -19,6 +19,10 @@ from config import (
     US_STOCKS_TICKERS,
     DEFAULT_TIMEFRAME,
     ACTIVE_RULES_PATH,
+    MAX_CAPITAL_PER_STOCK_PCT,
+    MAX_OPEN_POSITIONS,
+    MIN_CASH_RESERVE_PCT,
+    MAX_DAILY_LOSS_PCT,
 )
 from scanner import SwingScanner, CandidateSetup
 from sandbox import VectorBTSandbox, BacktestResult
@@ -86,6 +90,47 @@ class AmpolinPipeline:
         print("-" * 50)
         position_actions = self.position_manager.manage_open_positions()
 
+        # Step 0.2: Capital Security Guard - Daily Loss Circuit Breaker
+        total_cap = self.broker.get_account_capital()
+        daily_summary = self.trade_logger.calculate_daily_summary()
+        max_daily_loss = total_cap * MAX_DAILY_LOSS_PCT
+        today_loss = float(daily_summary.get("realized_pnl", 0.0))
+
+        if today_loss <= -max_daily_loss:
+            logger.critical(
+                f"🚨 [CIRCUIT BREAKER ACTIVATED] Realized loss today (₹{abs(today_loss):,.2f}) "
+                f"reached max tolerance (₹{max_daily_loss:,.2f} / {MAX_DAILY_LOSS_PCT*100}%). "
+                f"Halting all new trading for capital protection!"
+            )
+            self.notifier.send_message(
+                f"🚨 <b>DAILY LOSS CIRCUIT BREAKER TRIPPED</b>\n\n"
+                f"• <b>Realized Loss Today:</b> -₹{abs(today_loss):,.2f}\n"
+                f"• <b>Max Loss Ceiling:</b> ₹{max_daily_loss:,.2f} (3.0%)\n"
+                f"• <b>Status:</b> All new trades halted for the day to protect your capital. Remaining positions are guarded by trailing stops."
+            )
+            return {
+                "status": "CIRCUIT_BREAKER_HALTED",
+                "realized_loss": today_loss,
+                "max_daily_loss": max_daily_loss,
+                "position_actions": position_actions,
+                "executed_trades": [],
+            }
+
+        # Step 0.3: Capital Security Guard - Max Open Positions Ceiling
+        current_open = self.trade_logger.get_open_trades()
+        if len(current_open) >= MAX_OPEN_POSITIONS:
+            logger.info(
+                f"[PORTFOLIO GUARD] Maximum open positions limit reached ({len(current_open)}/{MAX_OPEN_POSITIONS}). "
+                f"Halting new scans to preserve diversification and cash reserve."
+            )
+            return {
+                "status": "MAX_POSITIONS_REACHED",
+                "open_positions_count": len(current_open),
+                "max_open_positions": MAX_OPEN_POSITIONS,
+                "position_actions": position_actions,
+                "executed_trades": [],
+            }
+
         # Step 0.5: Macro Regime Assessment
         if market.upper() == "NSE":
             print("\n" + "-" * 50)
@@ -134,7 +179,32 @@ class AmpolinPipeline:
         for setup, backtest in approved_pairs[:max_trades_to_execute]:
             print(f"\n--- Processing {setup.ticker} ---")
 
-            # 3. Gemini AI Brain
+            # 3.0 Capital Security Check: Dynamic Open Positions Count
+            active_open = self.trade_logger.get_open_trades()
+            if len(active_open) >= MAX_OPEN_POSITIONS:
+                logger.info(f"[PORTFOLIO GUARD] Maximum {MAX_OPEN_POSITIONS} positions reached. Halting new entries.")
+                break
+
+            # 3.1 Capital Security Check: Anti-Duplicate Position Guard
+            open_tickers = {t["ticker"].replace(".NS", "").upper() for t in active_open}
+            clean_ticker = setup.ticker.replace(".NS", "").upper()
+            if clean_ticker in open_tickers:
+                logger.info(f"[PORTFOLIO GUARD] {setup.ticker} is already active in open positions. Skipping duplicate entry.")
+                continue
+
+            # 3.2 Capital Security Check: Cash Reserve Floor
+            invested_capital = sum(float(t.get("capital_allocated") or (float(t.get("entry_price") or 0) * int(t.get("quantity") or 0))) for t in active_open)
+            available_cash = max(0.0, total_cap - invested_capital)
+            min_cash_reserve = total_cap * MIN_CASH_RESERVE_PCT
+            usable_cash = available_cash - min_cash_reserve
+            if usable_cash <= 0:
+                logger.warning(
+                    f"[CASH GUARD] Available cash (₹{available_cash:,.2f}) is at or below the 15% reserve floor "
+                    f"(₹{min_cash_reserve:,.2f}). Halting new entries to preserve liquidity."
+                )
+                break
+
+            # 3.3 Gemini AI Brain Evaluation
             decision = self.brain.evaluate_setup(setup, backtest)
 
             if decision.action != "BUY":
@@ -145,11 +215,17 @@ class AmpolinPipeline:
                 logger.info(f"AI Brain confidence ({decision.confidence*100:.1f}%) below minimum conviction threshold. Skipping.")
                 continue
 
-            # 4. DhanHQ Broker Execution (Dynamic Risk based on Regime)
+            # 4. DhanHQ Broker Execution (Dynamic Risk + Anti-Dump 20% Cap + 15% Cash Buffer)
             order_result = self.broker.place_cnc_bracket_order(
                 decision,
                 custom_risk_pct=dynamic_risk,
+                available_cash=available_cash,
             )
+
+            # Block if rejected or 0 quantity
+            if order_result.quantity <= 0 or order_result.status.startswith("REJECTED"):
+                logger.warning(f"[CAPITAL GUARD] Order rejected/blocked for {setup.ticker}: {order_result.status}")
+                continue
 
             # 5. SQLite Logging
             trade_id = self.trade_logger.log_trade(

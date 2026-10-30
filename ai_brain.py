@@ -126,6 +126,7 @@ Analyze the following validated technical breakout setup and deliver a definitiv
 - Multi-Timeframe Alignment: Strongly prioritize setups with 'BULLISH_CONFLUENCE' on the Weekly timeframe.
 - News/Catalyst Awareness: If breaking news indicates severe regulatory, legal, or earnings risk, reject or PASS.
 - Memory Integration: Learn from past trade outcomes. Avoid setups resembling recent failed patterns.
+- Capital Preservation & Anti-Dump Security: Never advocate concentrated allocations. Capital is strictly diversified across maximum 4 positions with a hard 20% cap per asset and 15% mandatory cash liquidity buffer.
 - Maximum account risk per trade: 1.0% of total capital (dynamically adjusted).
 - Minimum Risk to Reward: 1:2.0.
 - Holding period: Multi-day swing (typically 3 to 10 trading sessions).

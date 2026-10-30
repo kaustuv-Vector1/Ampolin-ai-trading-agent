@@ -21,6 +21,8 @@ from config import (
     DHAN_ACCESS_TOKEN,
     MAX_ACCOUNT_RISK_PCT,
     DEFAULT_ACCOUNT_CAPITAL,
+    MAX_CAPITAL_PER_STOCK_PCT,
+    MIN_CASH_RESERVE_PCT,
 )
 from ai_brain import TradeDecision
 
@@ -105,9 +107,11 @@ class DhanBroker:
         stop_loss: float,
         capital: Optional[float] = None,
         max_risk_pct: Optional[float] = None,
+        available_cash: Optional[float] = None,
     ) -> tuple[int, float, float]:
         """
-        Calculates position size strictly respecting dynamic account risk (adjusted for India VIX).
+        Calculates position size strictly respecting dynamic account risk (adjusted for India VIX)
+        and hard anti-concentration / anti-dump guards.
         Returns: (quantity, total_cost, total_risk_amount)
         """
         total_capital = capital or self.get_account_capital()
@@ -118,13 +122,40 @@ class DhanBroker:
         if per_share_risk <= 0:
             per_share_risk = entry_price * 0.02  # 2% fallback risk distance
 
-        # Quantity based on risk
+        # 1. Quantity strictly limited by 1% account risk budget
         shares_by_risk = int(max_risk_amount / per_share_risk)
 
-        # Quantity capped by total capital (cannot exceed 100% of cash in CNC delivery)
-        shares_by_capital = int(total_capital / entry_price)
+        # 2. Hard Anti-Concentration Guard: AI can NEVER allocate > 20% of account into any single stock
+        max_stock_capital = total_capital * MAX_CAPITAL_PER_STOCK_PCT
+        shares_by_concentration = int(max_stock_capital / entry_price)
 
-        quantity = max(1, min(shares_by_risk, shares_by_capital))
+        # Hard Veto: If even 1 single share exceeds the 20% capital ceiling, reject order immediately
+        if entry_price > max_stock_capital:
+            logger.warning(
+                f"[CAPITAL GUARD] Share price (₹{entry_price:,.2f}) exceeds single-stock capital ceiling "
+                f"(₹{max_stock_capital:,.2f} / {MAX_CAPITAL_PER_STOCK_PCT*100}%). Order rejected by Anti-Dump Guard."
+            )
+            return 0, 0.0, 0.0
+
+        # 3. Cash Reserve Floor Guard: Ensure trade never breaches 15% mandatory cash liquidity
+        if available_cash is not None:
+            min_cash_reserve = total_capital * MIN_CASH_RESERVE_PCT
+            usable_cash = max(0.0, available_cash - min_cash_reserve)
+            shares_by_cash = int(usable_cash / entry_price)
+            if shares_by_cash <= 0:
+                logger.warning(
+                    f"[CAPITAL GUARD] Free cash (₹{available_cash:,.2f}) after reserving 15% buffer "
+                    f"(₹{min_cash_reserve:,.2f}) cannot afford 1 share of ₹{entry_price:,.2f}. Trade blocked."
+                )
+                return 0, 0.0, 0.0
+            quantity = min(shares_by_risk, shares_by_concentration, shares_by_cash)
+        else:
+            quantity = min(shares_by_risk, shares_by_concentration)
+
+        if quantity <= 0:
+            logger.warning(f"[CAPITAL GUARD] Calculated quantity is 0 for entry price ₹{entry_price:,.2f}. Trade blocked.")
+            return 0, 0.0, 0.0
+
         total_cost = round(quantity * entry_price, 2)
         total_risk = round(quantity * per_share_risk, 2)
 
@@ -135,6 +166,7 @@ class DhanBroker:
         decision: TradeDecision,
         security_id: Optional[str] = None,
         custom_risk_pct: Optional[float] = None,
+        available_cash: Optional[float] = None,
     ) -> OrderResult:
         """
         Places a CNC Delivery order with multi-day Stop Loss and Target protection.
@@ -143,12 +175,34 @@ class DhanBroker:
         """
         clean_ticker = decision.ticker.replace(".NS", "")
         capital = self.get_account_capital()
+        timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         quantity, total_cost, total_risk = self.calculate_position_size(
             entry_price=decision.entry_price,
             stop_loss=decision.stop_loss,
             capital=capital,
             max_risk_pct=custom_risk_pct,
+            available_cash=available_cash,
         )
+
+        if quantity <= 0:
+            logger.warning(f"[CAPITAL GUARD] Blocked trade for {clean_ticker}: Single-stock concentration or cash buffer limit reached.")
+            return OrderResult(
+                order_id=f"REJECTED-{clean_ticker}",
+                ticker=decision.ticker,
+                status="REJECTED_CAPITAL_GUARD",
+                action="REJECTED",
+                quantity=0,
+                entry_price=decision.entry_price,
+                stop_loss=decision.stop_loss,
+                take_profit=decision.take_profit,
+                capital_allocated=0.0,
+                total_risk_amount=0.0,
+                risk_percentage=0.0,
+                timestamp=timestamp_str,
+                is_paper_trade=True,
+                raw_response={"status": "rejected", "message": "Position blocked by Anti-Dump & Capital Protection Guards (max 20% allocation / 15% cash reserve)."}
+            )
 
         risk_pct = round((total_risk / capital) * 100.0, 2)
         timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

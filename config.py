@@ -42,6 +42,12 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 MAX_ACCOUNT_RISK_PCT = float(os.getenv("MAX_ACCOUNT_RISK_PCT", "0.01"))  # 1% base risk per trade
 DEFAULT_ACCOUNT_CAPITAL = float(os.getenv("DEFAULT_ACCOUNT_CAPITAL", "100000.0"))  # INR 1,00,000
 
+# Hard Capital Protection & Circuit Breakers (Anti-Dump & Concentration Guards)
+MAX_CAPITAL_PER_STOCK_PCT = float(os.getenv("MAX_CAPITAL_PER_STOCK_PCT", "0.20"))  # Hard 20% max allocation per stock
+MAX_OPEN_POSITIONS = int(os.getenv("MAX_OPEN_POSITIONS", "4"))                     # Max 4 concurrent open positions
+MIN_CASH_RESERVE_PCT = float(os.getenv("MIN_CASH_RESERVE_PCT", "0.15"))            # Mandatory 15% cash reserve floor
+MAX_DAILY_LOSS_PCT = float(os.getenv("MAX_DAILY_LOSS_PCT", "0.03"))                # 3% daily loss kill-switch circuit breaker
+
 # Market Regime & Macro Filters (India VIX & Nifty 50 Breadth)
 VIX_TICKER = "^INDIAVIX"
 INDEX_TICKER = "^NSEI"
