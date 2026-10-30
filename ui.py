@@ -32,6 +32,7 @@ from telegram_notifier import TelegramNotifier
 from market_regime import MarketRegimeAnalyzer
 from position_manager import PositionManager
 from main import AmpolinPipeline
+from llm_client import MultiProviderLLM
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("AmpolinUI")
@@ -48,11 +49,11 @@ def pwa_manifest():
     return JSONResponse({
         "name": "Ampolin AI Trading Agent",
         "short_name": "Ampolin AI",
-        "description": "Automated Swing Trading System for NSE & Wall Street",
+        "description": "Autonomous Swing Trading Terminal for NSE & Wall Street",
         "start_url": "/",
         "display": "standalone",
-        "background_color": "#0b0f17",
-        "theme_color": "#0b0f17",
+        "background_color": "#000000",
+        "theme_color": "#000000",
         "orientation": "portrait-primary",
         "icons": [
             {
@@ -80,6 +81,7 @@ reflection = EODReflection(trade_logger)
 notifier = TelegramNotifier()
 regime_analyzer = MarketRegimeAnalyzer(sample_size=15)
 position_manager = PositionManager(trade_logger=trade_logger, notifier=notifier, broker=broker)
+llm_brain = MultiProviderLLM()
 
 # Cache for latest scan results in memory
 latest_scan_results = {
@@ -96,6 +98,40 @@ class ScanRequest(BaseModel):
     timeframe: str = "1d"
     tickers: Optional[List[str]] = None
     dry_run: bool = True
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+@app.post("/api/chat")
+def in_app_chat(req: ChatRequest):
+    """Direct in-app conversation with Ampolin AI powered by Gemini Flash & Groq fallback."""
+    user_msg = (req.message or "").strip()
+    if not user_msg:
+        return {"reply": "Please type a message to start chatting!"}
+
+    open_trades = trade_logger.get_open_trades()
+    positions_str = ", ".join([f"{t['ticker']} (entry: {t['entry_price']}, stage: {t.get('stage','INITIAL')})" for t in open_trades]) or "None (100% Cash)"
+    summary = trade_logger.calculate_daily_summary()
+    regime = regime_analyzer.analyze_regime()
+
+    system_prompt = f"""
+You are Ampolin AI, an elite institutional quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
+Current System Context:
+- Active Open Positions: {positions_str}
+- Today's Realized P&L: ₹{summary.get('realized_pnl', 0.0):,.2f}
+- India VIX Volatility: {regime.india_vix:.2f} ({regime.vix_regime})
+- Market Breadth: {regime.market_breadth_pct:.1f}% stocks > 50 EMA ({regime.breadth_regime})
+- Trading Rules: 1% risk budgeting, 20/50 EMA breakouts, RSI 48-68 momentum, VectorBT statistical edge (Win Rate >= 52%, Profit Factor >= 1.50), 1R breakeven, 3.5% profit ratchet (locks +2.0%), and 20 EMA trailing.
+
+Answer Kaustuv's question directly, concisely, and with sharp quantitative insight.
+Use bullet points and bolding where helpful. Keep it concise so it reads great on mobile.
+"""
+    reply = llm_brain.generate_chat_response(user_prompt=user_msg, system_prompt=system_prompt)
+    if not reply:
+        reply = "I'm currently updating live feeds. Please ask again in a few seconds!"
+    return {"reply": reply}
 
 
 @app.get("/api/status")
@@ -224,108 +260,106 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
 <body class="bg-black text-zinc-300 min-h-screen flex flex-col antialiased selection:bg-white selection:text-black">
 
   <!-- Top Minimalist Header -->
-  <header class="bg-black border-b border-zinc-800/80 px-6 py-4 flex flex-wrap justify-between items-center sticky top-0 z-50">
-    <div class="flex items-center space-x-3.5">
-      <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-8 h-8 rounded-lg border border-zinc-700 object-cover">
+  <header class="bg-black/95 backdrop-blur border-b border-zinc-850 px-4 sm:px-6 py-3.5 flex justify-between items-center sticky top-0 z-50">
+    <div class="flex items-center space-x-3">
+      <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-8 h-8 rounded-lg border border-zinc-800 object-cover shrink-0 shadow-sm">
       <div>
-        <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
-          AMPOLIN <span class="text-zinc-400 font-normal text-xs px-2 py-0.5 rounded border border-zinc-800 bg-zinc-900/60 mono">AI TRADING</span>
-        </h1>
-        <p class="text-[11px] text-zinc-500 tracking-wide">Autonomous Dual-Market Terminal &bull; NSE &amp; Wall Street</p>
+        <div class="flex items-center gap-2">
+          <span class="text-sm sm:text-base font-bold tracking-tight text-white mono">AMPOLIN</span>
+          <span class="text-zinc-400 font-normal text-[10px] px-1.5 py-0.5 rounded border border-zinc-800 bg-zinc-900 mono">QUANT</span>
+        </div>
+        <p class="text-[10px] sm:text-[11px] text-zinc-500 tracking-tight">Autonomous Dual-Market Terminal &bull; NSE &amp; Wall Street</p>
       </div>
     </div>
 
-    <!-- Live Status Badges (Monochrome) -->
-    <div class="flex items-center gap-3 text-xs mt-2 sm:mt-0">
-      <div class="flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-md border border-zinc-800">
-        <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-        <span class="text-zinc-500 text-[11px]">Engine:</span>
-        <span class="font-medium text-white mono text-[11px]" id="badge-engine">ACTIVE</span>
+    <!-- Unified Segmented Status Capsule -->
+    <div class="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] mono divide-x divide-zinc-800 shadow-inner">
+      <div class="flex items-center gap-1.5 pr-2.5 sm:pr-3">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-white font-semibold" id="badge-engine">ACTIVE</span>
       </div>
-      <div class="flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-md border border-zinc-800">
-        <span class="text-zinc-500 text-[11px]">Brain:</span>
-        <span class="font-medium text-zinc-200 mono text-[11px]" id="badge-brain">gemini-3.5-flash-lite</span>
+      <div class="px-2.5 sm:px-3 text-zinc-400 hidden sm:block">
+        <span id="badge-brain">Gemini &bull; Groq</span>
       </div>
-      <div class="flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-md border border-zinc-800">
-        <span class="text-zinc-500 text-[11px]">Risk:</span>
-        <span class="font-medium text-zinc-200 mono text-[11px]">1.0% Max</span>
+      <div class="px-2.5 sm:px-3 text-zinc-400 hidden md:block">
+        <span>Risk: 1.0% Max</span>
       </div>
-      <div class="flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-md border border-zinc-800">
-        <span id="live-time" class="mono text-zinc-400 text-[11px]">--:--:-- IST</span>
+      <div class="pl-2.5 sm:pl-3 text-zinc-300 font-medium">
+        <span id="live-time">--:--:-- IST</span>
       </div>
     </div>
   </header>
 
   <!-- Metric Overview Bar (Minimalist Cards) -->
-  <div class="max-w-7xl mx-auto w-full px-6 pt-6 grid grid-cols-2 md:grid-cols-5 gap-3.5">
-    <div class="bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
-      <div class="flex justify-between items-center text-zinc-500 text-[11px] font-medium tracking-wider uppercase mb-1">
+  <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-5 sm:pt-6 grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3.5">
+    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
         <span>Daily Realized P&amp;L</span>
         <i class="fa-solid fa-chart-line text-zinc-600"></i>
       </div>
-      <div class="text-2xl font-bold text-white mono" id="metric-pnl">₹0.00</div>
-      <div class="text-[11px] text-zinc-600 mt-1">Cash Delivery Positions</div>
+      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-pnl">₹0.00</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-600 mt-1">Cash Delivery Positions</div>
     </div>
 
-    <div class="bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
-      <div class="flex justify-between items-center text-zinc-500 text-[11px] font-medium tracking-wider uppercase mb-1">
+    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
         <span>Market Breadth</span>
         <i class="fa-solid fa-bars-progress text-zinc-600"></i>
       </div>
-      <div class="text-2xl font-bold text-white mono" id="metric-breadth">--%</div>
-      <div class="text-[11px] text-zinc-600 mt-1" id="metric-breadth-regime">Nifty 50 &gt; 50 EMA</div>
+      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-breadth">--%</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-600 mt-1" id="metric-breadth-regime">Nifty 50 &gt; 50 EMA</div>
     </div>
 
-    <div class="bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
-      <div class="flex justify-between items-center text-zinc-500 text-[11px] font-medium tracking-wider uppercase mb-1">
+    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
         <span>India VIX</span>
         <i class="fa-solid fa-bolt text-zinc-600"></i>
       </div>
-      <div class="text-2xl font-bold text-white mono" id="metric-vix">--</div>
-      <div class="text-[11px] text-zinc-600 mt-1" id="metric-dynamic-risk">Risk: --%</div>
+      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-vix">--</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-600 mt-1" id="metric-dynamic-risk">Risk: --%</div>
     </div>
 
-    <div class="bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
-      <div class="flex justify-between items-center text-zinc-500 text-[11px] font-medium tracking-wider uppercase mb-1">
-        <span>Strategy Win Rate</span>
+    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Win Rate</span>
         <i class="fa-solid fa-bullseye text-zinc-600"></i>
       </div>
-      <div class="text-2xl font-bold text-white mono" id="metric-winrate">0.0%</div>
-      <div class="text-[11px] text-zinc-600 mt-1">VectorBT Filtered (&ge;52%)</div>
+      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-winrate">0.0%</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-600 mt-1">VectorBT Filtered (&ge;52%)</div>
     </div>
 
-    <div class="bg-zinc-950 p-4 rounded-xl border border-zinc-800/80">
-      <div class="flex justify-between items-center text-zinc-500 text-[11px] font-medium tracking-wider uppercase mb-1">
+    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80 col-span-2 md:col-span-1">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
         <span>Active Positions</span>
         <i class="fa-solid fa-layer-group text-zinc-600"></i>
       </div>
-      <div class="text-2xl font-bold text-white mono" id="metric-open-trades">0</div>
-      <div class="text-[11px] text-zinc-600 mt-1">1R Breakeven &bull; 3.5% Lock</div>
+      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-open-trades">0</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-600 mt-1">1R Breakeven &bull; 3.5% Lock</div>
     </div>
   </div>
 
-  <!-- Primary Action & Control Toolbar -->
-  <div class="max-w-7xl mx-auto w-full px-6 py-5 flex flex-wrap gap-3 items-center justify-between">
-    <div class="flex items-center gap-2.5 flex-wrap">
-      <button onclick="runPipeline()" id="btn-pipeline" class="bg-white hover:bg-zinc-200 text-black font-semibold px-4 py-2 rounded-lg text-xs tracking-wide flex items-center gap-2 transition active:scale-95 shadow-sm">
-        <i class="fa-solid fa-play text-[10px]"></i> Run Autonomous Pipeline
+  <!-- Primary Action & Control Toolbar (Mobile Thumb-Friendly Grid) -->
+  <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 py-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+    <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+      <button onclick="runPipeline()" id="btn-pipeline" class="bg-white hover:bg-zinc-200 text-black font-semibold px-3.5 py-2.5 sm:py-2 rounded-lg text-xs tracking-wide flex items-center justify-center gap-2 transition active:scale-95 shadow-sm">
+        <i class="fa-solid fa-play text-[10px]"></i> Run Pipeline
       </button>
 
-      <button onclick="runScan()" id="btn-scan" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg border border-zinc-800 flex items-center gap-2 transition text-xs">
-        <i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan Candidates
+      <button onclick="runScan()" id="btn-scan" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2.5 sm:py-2 rounded-lg border border-zinc-800 flex items-center justify-center gap-2 transition text-xs">
+        <i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan NSE
       </button>
 
-      <button onclick="managePositions()" id="btn-manage" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg border border-zinc-800 flex items-center gap-2 transition text-xs">
-        <i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Sweep Stops &amp; Profit Lock
+      <button onclick="managePositions()" id="btn-manage" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2.5 sm:py-2 rounded-lg border border-zinc-800 flex items-center justify-center gap-2 transition text-xs">
+        <i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Profit Lock
       </button>
 
-      <button onclick="runEOD()" id="btn-eod" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-medium px-3 py-2 rounded-lg border border-zinc-800 flex items-center gap-2 transition text-xs">
+      <button onclick="runEOD()" id="btn-eod" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-medium px-3 py-2.5 sm:py-2 rounded-lg border border-zinc-800 flex items-center justify-center gap-2 transition text-xs">
         <i class="fa-solid fa-microscope text-[10px]"></i> EOD Reflection
       </button>
     </div>
 
-    <div class="flex items-center gap-2.5 text-xs">
-      <div class="flex items-center bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 gap-2">
+    <div class="flex items-center justify-between sm:justify-end gap-2 text-xs">
+      <div class="flex items-center bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 gap-2 flex-1 sm:flex-initial">
         <span class="text-zinc-500 text-[11px]">Timeframe:</span>
         <select id="select-tf" class="bg-transparent border-0 text-white mono text-xs focus:outline-none cursor-pointer">
           <option value="1d" selected class="bg-zinc-900">1D (Daily)</option>
@@ -333,9 +367,9 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         </select>
       </div>
 
-      <div class="flex items-center bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 gap-2">
+      <div class="flex items-center bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 gap-2 flex-1 sm:flex-initial justify-center">
         <span class="text-zinc-500 text-[11px]">Mode:</span>
-        <span class="text-zinc-300 border border-zinc-700/80 bg-zinc-900/80 px-2 py-0.5 rounded text-[11px] mono font-medium">Paper Trading</span>
+        <span class="text-zinc-300 border border-zinc-700/80 bg-zinc-900/80 px-2 py-0.5 rounded text-[11px] mono font-medium">Paper</span>
       </div>
     </div>
   </div>
@@ -776,8 +810,148 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    function toggleChatDrawer() {
+      const drawer = document.getElementById('chat-drawer');
+      drawer.classList.toggle('hidden');
+      if (!drawer.classList.contains('hidden')) {
+        document.getElementById('chat-input').focus();
+        const msgs = document.getElementById('chat-messages');
+        msgs.scrollTop = msgs.scrollHeight;
+      }
+    }
+
+    function sendQuickPrompt(txt) {
+      document.getElementById('chat-input').value = txt;
+      handleSendChatMessage(new Event('submit'));
+    }
+
+    async function handleSendChatMessage(e) {
+      if (e) e.preventDefault();
+      const input = document.getElementById('chat-input');
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      input.value = '';
+      const container = document.getElementById('chat-messages');
+
+      // User Bubble
+      container.innerHTML += `
+        <div class="flex justify-end">
+          <div class="bg-white text-black font-medium p-3 rounded-xl max-w-[85%] text-xs shadow-sm">
+            ${escapeHtml(msg)}
+          </div>
+        </div>
+      `;
+      container.scrollTop = container.scrollHeight;
+
+      // Typing indicator
+      const typingId = 'typing-' + Date.now();
+      container.innerHTML += `
+        <div id="${typingId}" class="flex gap-2 items-start">
+          <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
+          <div class="bg-zinc-900/90 text-zinc-400 border border-zinc-800 p-2.5 rounded-xl max-w-[85%] text-xs flex items-center gap-1.5 mono">
+            <span class="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce"></span>
+            <span class="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style="animation-delay: 0.15s"></span>
+            <span class="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style="animation-delay: 0.3s"></span>
+          </div>
+        </div>
+      `;
+      container.scrollTop = container.scrollHeight;
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg })
+        });
+        const data = await res.json();
+        document.getElementById(typingId)?.remove();
+
+        const formatted = (data.reply || "No reply generated.")
+          .replace(/\\n\\n/g, '<br><br>')
+          .replace(/\\n/g, '<br>')
+          .replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
+
+        container.innerHTML += `
+          <div class="flex gap-2 items-start">
+            <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
+            <div class="bg-zinc-900/90 text-zinc-200 border border-zinc-800 p-3 rounded-xl max-w-[85%] text-xs leading-relaxed">
+              ${formatted}
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        document.getElementById(typingId)?.remove();
+        container.innerHTML += `
+          <div class="flex gap-2 items-start">
+            <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
+            <div class="bg-rose-950/40 text-rose-300 border border-rose-900/50 p-3 rounded-xl max-w-[85%] text-xs">
+              Error: ${err.message || 'Could not connect to AI'}
+            </div>
+          </div>
+        `;
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+      return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
     window.onload = initDashboard;
   </script>
+
+  <!-- Floating In-App AI Chat Trigger -->
+  <button onclick="toggleChatDrawer()" id="btn-open-chat" class="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 bg-white hover:bg-zinc-200 text-black font-semibold px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs transition active:scale-95 border border-zinc-200 cursor-pointer">
+    <i class="fa-solid fa-sparkles text-black"></i>
+    <span>Chat with AI</span>
+  </button>
+
+  <!-- In-App AI Chat Drawer (Mobile Bottom Sheet + Desktop Floating Window) -->
+  <div id="chat-drawer" class="fixed inset-x-0 bottom-0 sm:inset-auto sm:bottom-6 sm:right-6 z-50 w-full sm:w-[400px] h-[85vh] sm:h-[540px] bg-black border-t sm:border border-zinc-800 sm:rounded-2xl shadow-2xl flex flex-col hidden transition-all">
+    <!-- Chat Header -->
+    <div class="px-4 py-3 bg-zinc-950 border-b border-zinc-800 flex justify-between items-center sm:rounded-t-2xl">
+      <div class="flex items-center gap-2.5">
+        <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-6 h-6 rounded border border-zinc-800 object-cover">
+        <div>
+          <div class="text-xs font-bold text-white mono flex items-center gap-1.5">
+            AMPOLIN AI <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          </div>
+          <p class="text-[10px] text-zinc-500">Dual-Engine &bull; Gemini Flash &amp; Groq</p>
+        </div>
+      </div>
+      <button onclick="toggleChatDrawer()" class="text-zinc-400 hover:text-white text-base p-1.5 rounded-lg hover:bg-zinc-900 transition cursor-pointer">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Quick Prompt Chips -->
+    <div class="px-3 py-2 bg-zinc-950/70 border-b border-zinc-850 flex gap-1.5 overflow-x-auto text-[11px] mono">
+      <button onclick="sendQuickPrompt('How is the market regime and India VIX today?')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">📊 Regime</button>
+      <button onclick="sendQuickPrompt('What are our active open positions and stages?')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">📈 Positions</button>
+      <button onclick="sendQuickPrompt('Explain the 3.5% profit lock rule')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">🛡️ Profit Lock</button>
+      <button onclick="sendQuickPrompt('What is our VectorBT filter criteria?')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">⚡ VectorBT</button>
+    </div>
+
+    <!-- Message History Stream -->
+    <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3 text-xs leading-relaxed">
+      <div class="flex gap-2 items-start">
+        <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
+        <div class="bg-zinc-900/90 text-zinc-200 border border-zinc-800 p-3 rounded-xl max-w-[85%] text-xs">
+          Hey Kaustuv! I'm your autonomous quant partner. Ask me about open trades, market breadth, scanning setups, or risk rules.
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Input Form -->
+    <form onsubmit="handleSendChatMessage(event)" class="p-3 bg-zinc-950 border-t border-zinc-800 flex items-center gap-2 sm:rounded-b-2xl">
+      <input type="text" id="chat-input" placeholder="Ask Ampolin AI..." autocomplete="off" class="flex-1 bg-zinc-900 text-white placeholder-zinc-500 text-xs px-3.5 py-2.5 rounded-lg border border-zinc-800 focus:outline-none focus:border-zinc-500 mono">
+      <button type="submit" id="chat-send-btn" class="bg-white hover:bg-zinc-200 text-black px-3.5 py-2.5 rounded-lg text-xs font-semibold shrink-0 transition active:scale-95 cursor-pointer">
+        <i class="fa-solid fa-arrow-up"></i>
+      </button>
+    </form>
+  </div>
 </body>
 </html>
 """
