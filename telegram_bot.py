@@ -59,7 +59,13 @@ class InteractiveTelegramBot:
     def is_authorized(self, update: Update) -> bool:
         """Ensures only the account owner can interact with the bot."""
         chat_id = str(update.effective_chat.id) if update.effective_chat else ""
-        return chat_id == self.authorized_chat_id
+        if not self.authorized_chat_id:
+            self.authorized_chat_id = chat_id
+            return True
+        is_auth = (chat_id == self.authorized_chat_id)
+        if not is_auth:
+            logger.warning(f"Unauthorized chat attempt from chat_id: {chat_id} (expected: {self.authorized_chat_id})")
+        return is_auth
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self.is_authorized(update):
@@ -200,6 +206,8 @@ class InteractiveTelegramBot:
         if not user_text:
             return
 
+        logger.info(f"Incoming Telegram chat message: '{user_text}' from chat_id: {update.effective_chat.id}")
+
         if not self.gemini_client:
             await update.message.reply_text("Gemini AI is not connected for chat.")
             return
@@ -271,13 +279,14 @@ Use bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰).
         return app
 
     def start_polling_in_background(self):
-        """Runs the telegram bot in a separate background thread with its own asyncio loop."""
+        """Runs the telegram bot in a separate background thread with clean signal isolation."""
         def _runner():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            app = self.build_application()
-            logger.info("Interactive Telegram Bot polling started in background thread.")
-            loop.run_until_complete(app.run_polling(drop_pending_updates=True, close_loop=False))
+            try:
+                app = self.build_application()
+                logger.info("Interactive Telegram Bot polling started in background thread.")
+                app.run_polling(drop_pending_updates=False, stop_signals=None)
+            except Exception as e:
+                logger.error(f"Error in Telegram Bot background runner: {e}")
 
         t = threading.Thread(target=_runner, name="AmpolinTelegramBotThread", daemon=True)
         t.start()
