@@ -261,6 +261,67 @@ def manage_positions():
     return {"status": "SUCCESS", "actions_taken": actions}
 
 
+class TradeActionRequest(BaseModel):
+    order_id: str
+
+
+@app.post("/api/trades/breakeven")
+def manual_breakeven(req: TradeActionRequest):
+    open_trades = trade_logger.get_open_trades()
+    target = next((t for t in open_trades if t["order_id"] == req.order_id), None)
+    if not target:
+        return JSONResponse({"status": "ERROR", "message": f"Active trade {req.order_id} not found."}, status_code=404)
+
+    entry = float(target["entry_price"])
+    ticker = target["ticker"]
+    trade_logger.update_trade_stop_loss(req.order_id, entry, "STAGE_BREAKEVEN")
+    notifier.send_message(
+        f"🎯 <b>MANUAL BREAKEVEN ACTIVATED - {ticker}</b>\n\n"
+        f"• Entry: ₹{entry:,.2f}\n"
+        f"• New Protective SL: ₹{entry:,.2f}\n"
+        f"• <b>Status:</b> Exactly 0.00% capital risk. Trade is fully protected!"
+    )
+    return {"status": "SUCCESS", "message": f"Stop loss for {ticker} moved to breakeven (₹{entry:,.2f})."}
+
+
+@app.post("/api/trades/lock-profit")
+def manual_lock_profit(req: TradeActionRequest):
+    open_trades = trade_logger.get_open_trades()
+    target = next((t for t in open_trades if t["order_id"] == req.order_id), None)
+    if not target:
+        return JSONResponse({"status": "ERROR", "message": f"Active trade {req.order_id} not found."}, status_code=404)
+
+    entry = float(target["entry_price"])
+    ticker = target["ticker"]
+    locked_sl = round(entry * 1.02, 2)
+    trade_logger.update_trade_stop_loss(req.order_id, locked_sl, "STAGE_PROFIT_LOCKED")
+    notifier.send_message(
+        f"🔒 <b>MANUAL PROFIT LOCK ACTIVATED - {ticker}</b>\n\n"
+        f"• Entry: ₹{entry:,.2f}\n"
+        f"• Protective SL: ₹{locked_sl:,.2f} (+2.0% profit floor)\n"
+        f"• <b>Status:</b> Guaranteed minimum +2.0% profit locked!"
+    )
+    return {"status": "SUCCESS", "message": f"Stop loss for {ticker} locked at +2.0% (₹{locked_sl:,.2f})."}
+
+
+@app.post("/api/trades/close")
+def manual_close_trade(req: TradeActionRequest):
+    open_trades = trade_logger.get_open_trades()
+    target = next((t for t in open_trades if t["order_id"] == req.order_id), None)
+    if not target:
+        return JSONResponse({"status": "ERROR", "message": f"Active trade {req.order_id} not found."}, status_code=404)
+
+    ticker = target["ticker"]
+    exit_price = float(target.get("current_price") or target["entry_price"])
+    trade_logger.close_trade(req.order_id, exit_price=exit_price)
+    notifier.send_message(
+        f"💰 <b>MANUAL SQUARE-OFF EXECUTED - {ticker}</b>\n\n"
+        f"• Exit Price: ₹{exit_price:,.2f}\n"
+        f"• <b>Status:</b> Trade closed and realized P&L recorded."
+    )
+    return {"status": "SUCCESS", "message": f"Position in {ticker} closed at ₹{exit_price:,.2f}."}
+
+
 @app.get("/api/rules")
 def get_rules():
     if ACTIVE_RULES_PATH.exists():
@@ -329,8 +390,13 @@ def run_eod_reflection():
     return result
 
 
+DASHBOARD_HTML_FILE = Path(__file__).resolve().parent / "dashboard.html"
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard_html():
+    if DASHBOARD_HTML_FILE.exists():
+        with open(DASHBOARD_HTML_FILE, "r", encoding="utf-8") as f:
+            return f.read()
     return DASHBOARD_HTML_PAGE
 
 

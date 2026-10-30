@@ -242,6 +242,22 @@ class TradeLogger:
             logger.info(f"Trade {order_id} closed at ₹{exit_price} | P&L: ₹{pnl:.2f} ({pnl_pct:.2f}%)")
             return True
 
+    def update_trade_stop_loss(self, order_id: str, new_stop_loss: float, new_stage: str) -> bool:
+        """Manually or algorithmically updates a trade's stop loss and stage."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE trades SET stop_loss = ?, stage = ? WHERE order_id = ?",
+                (round(new_stop_loss, 2), new_stage, order_id),
+            )
+            conn.commit()
+            logger.info(f"Trade {order_id} stop loss updated to ₹{new_stop_loss:.2f} ({new_stage})")
+        try:
+            self.backup_mgr.create_snapshot()
+        except Exception:
+            pass
+        return True
+
     def get_all_trades(self, limit: int = 50) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
             cursor = conn.cursor()

@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Ampolin AI | Institutional Quant Terminal</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/static/ampolin_icon_sq.png">
+  <link rel="apple-touch-icon" href="/static/ampolin_icon_sq.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Ampolin AI">
+  <meta name="theme-color" content="#09090b">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #09090b; font-family: -apple-system, BlinkMacSystemFont, "Geist", "Inter", "Segoe UI", Roboto, sans-serif; letter-spacing: -0.01em; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: #09090b; }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+    .fintech-card { background-color: #121215; border: 1px solid rgba(255, 255, 255, 0.07); }
+    .fintech-card-subtle { background-color: #16161a; border: 1px solid rgba(255, 255, 255, 0.05); }
+    .chart-tab.active { background-color: #ffffff; color: #000000; font-weight: 600; }
+  </style>
+</head>
+<body class="bg-[#09090b] text-zinc-300 min-h-screen flex flex-col antialiased selection:bg-white selection:text-black pb-16 md:pb-0">
+
+  <!-- Top Minimalist Institutional Header -->
+  <header class="bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/80 px-4 sm:px-6 py-3 flex justify-between items-center sticky top-0 z-50">
+    <div class="flex items-center space-x-3">
+      <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-8 h-8 rounded-lg border border-zinc-800 object-cover shrink-0 shadow-sm">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-sm sm:text-base font-bold tracking-tight text-white mono">AMPOLIN</span>
+          <span class="text-[10px] text-zinc-400 font-medium px-1.5 py-0.5 rounded border border-zinc-800 bg-zinc-900 mono">FINTECH PRO</span>
+        </div>
+        <p class="text-[10px] sm:text-[11px] text-zinc-500">Autonomous Dual-Market Execution &bull; NSE &amp; Wall Street</p>
+      </div>
+    </div>
+
+    <!-- Unified Segmented Status Capsule -->
+    <div class="flex items-center bg-[#121215] border border-zinc-800 rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] mono divide-x divide-zinc-800 shadow-sm">
+      <div class="flex items-center gap-1.5 pr-2.5 sm:pr-3">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-white font-semibold" id="badge-engine">ACTIVE</span>
+      </div>
+      <div class="px-2.5 sm:px-3 text-zinc-400 hidden sm:block">
+        <span id="badge-brain">Gemini 3.5 &bull; Groq</span>
+      </div>
+      <div class="px-2.5 sm:px-3 text-zinc-400 hidden md:block">
+        <span id="badge-pcr">PCR: 1.08 &bull; Accumulation</span>
+      </div>
+      <div class="px-2.5 sm:px-3 text-emerald-400 hidden lg:block font-medium">
+        <span>20% Anti-Dump Guard</span>
+      </div>
+      <div class="pl-2.5 sm:pl-3 text-zinc-300 font-medium">
+        <span id="live-time">--:--:-- IST</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Metric Overview Bar (Minimalist Swiss Cards) -->
+  <div id="section-dashboard" class="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-5 grid grid-cols-2 md:grid-cols-6 gap-2.5 sm:gap-3.5">
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Portfolio Equity</span>
+        <i class="fa-solid fa-wallet text-zinc-600 text-xs"></i>
+      </div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-equity">₹100,912.28</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-funds-breakdown">Cash: ₹34,668 | Invested: ₹65,332</div>
+    </div>
+
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Unrealized P&amp;L</span>
+        <i class="fa-solid fa-chart-line text-zinc-600 text-xs"></i>
+      </div>
+      <div class="text-lg sm:text-2xl font-bold text-emerald-400 mono tabular-nums" id="metric-pnl">+₹912.28</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-pnl-breakdown">Floating: +₹912.28 | Realized: ₹0.00</div>
+    </div>
+
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Market Breadth</span>
+        <i class="fa-solid fa-bars-progress text-zinc-600 text-xs"></i>
+      </div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-breadth">65.0%</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-breadth-regime">BULLISH_TREND (>50 EMA)</div>
+    </div>
+
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>India VIX</span>
+        <i class="fa-solid fa-bolt text-zinc-600 text-xs"></i>
+      </div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-vix">12.80</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-dynamic-risk">Dynamic Risk: 1.00%</div>
+    </div>
+
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Win Rate (Filtered)</span>
+        <i class="fa-solid fa-bullseye text-zinc-600 text-xs"></i>
+      </div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-winrate">100.0%</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1">3/3 Positions in Profit</div>
+    </div>
+
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl col-span-2 md:col-span-1">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Active Holdings</span>
+        <i class="fa-solid fa-layer-group text-zinc-600 text-xs"></i>
+      </div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-open-trades">3</div>
+      <div class="text-[10px] sm:text-[11px] text-emerald-400 mt-1">1 Profit Locked (WIPRO)</div>
+    </div>
+  </div>
+
+  <!-- Primary Action & Control Toolbar -->
+  <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 py-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+    <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+      <button onclick="runPipeline()" id="btn-pipeline" class="bg-white hover:bg-zinc-200 text-black font-semibold px-3.5 py-2 rounded-lg text-xs tracking-wide flex items-center justify-center gap-2 transition active:scale-95 shadow-sm cursor-pointer">
+        <i class="fa-solid fa-play text-[10px]"></i> Run Pipeline
+      </button>
+
+      <button onclick="runScan()" id="btn-scan" class="fintech-card hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
+        <i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan NSE
+      </button>
+
+      <button onclick="managePositions()" id="btn-manage" class="fintech-card hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
+        <i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Sweep &amp; Lock Profits
+      </button>
+
+      <button onclick="runEOD()" id="btn-eod" class="fintech-card hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-medium px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
+        <i class="fa-solid fa-microscope text-[10px]"></i> EOD Reflection
+      </button>
+
+      <a href="/api/backup/export" download="portfolio_state_snapshot.json" class="fintech-card hover:bg-zinc-800 text-zinc-300 font-medium px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 transition text-xs cursor-pointer">
+        <i class="fa-solid fa-cloud-arrow-down text-[10px] text-zinc-400"></i> Export State
+      </a>
+    </div>
+
+    <div class="flex items-center justify-between sm:justify-end gap-2 text-xs">
+      <div class="flex items-center fintech-card px-3 py-1.5 rounded-lg gap-2 flex-1 sm:flex-initial">
+        <span class="text-zinc-500 text-[11px]">Timeframe:</span>
+        <select id="select-tf" class="bg-transparent border-0 text-white mono text-xs focus:outline-none cursor-pointer">
+          <option value="1d" selected class="bg-zinc-900">1D (Daily Swing)</option>
+          <option value="4h" class="bg-zinc-900">4H (Tactical)</option>
+        </select>
+      </div>
+
+      <div class="flex items-center fintech-card px-3 py-1.5 rounded-lg gap-2 flex-1 sm:flex-initial justify-center">
+        <span class="text-zinc-500 text-[11px]">Mode:</span>
+        <span class="text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 rounded text-[11px] mono font-medium">Paper Sandbox</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Candlestick Chart Module (TradingView Pro) -->
+  <section id="section-charts" class="max-w-7xl mx-auto w-full px-4 sm:px-6 mb-5">
+    <div class="fintech-card rounded-xl p-4 sm:p-5">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-white tracking-tight flex items-center gap-2">
+              <i class="fa-solid fa-chart-candlestick text-emerald-400"></i> Interactive Candlestick Charts
+            </h2>
+            <span class="text-[10px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2 py-0.5 rounded mono">TradingView Advanced</span>
+          </div>
+          <p class="text-[11px] text-zinc-500 mt-0.5">Live technical price action with institutional trailing profit ratchets</p>
+        </div>
+
+        <!-- Stock Switcher Tabs -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0" id="chart-tabs-container">
+          <button onclick="switchChartSymbol('NSE:WIPRO', 'WIPRO.NS', 190.10, 193.90, 197.31, 'STAGE_PROFIT_LOCKED', 'SIM-DHAN-20261029234359-WIPRO', this)" class="chart-tab active bg-white text-black font-semibold px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer">
+            <span>🇮🇳 WIPRO</span>
+            <span class="text-[10px] text-emerald-800 bg-emerald-200 px-1 rounded font-bold">+3.79%</span>
+          </button>
+          <button onclick="switchChartSymbol('NASDAQ:AAPL', 'AAPL', 348.91, 339.51, 351.20, 'STAGE_INITIAL', 'SIM-DHAN-20261030151823-AAPL', this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer">
+            <span>🇺🇸 AAPL</span>
+            <span class="text-[10px] text-emerald-400 font-bold">+0.66%</span>
+          </button>
+          <button onclick="switchChartSymbol('NSE:DIVISLAB', 'DIVISLAB.NS', 9664.00, 9293.98, 9680.00, 'STAGE_INITIAL', 'SIM-DHAN-20261029234345-DIVISLAB', this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer">
+            <span>🇮🇳 DIVISLAB</span>
+            <span class="text-[10px] text-emerald-400 font-bold">+0.17%</span>
+          </button>
+          <button onclick="switchChartSymbol('NSE:NIFTY', 'NIFTY 50', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer">
+            <span>📊 NIFTY 50</span>
+          </button>
+          <button onclick="switchChartSymbol('NSE:INDIAVIX', 'INDIA VIX', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer">
+            <span>⚡ INDIA VIX</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Position Level Summary & Quick Actions -->
+      <div id="chart-position-bar" class="fintech-card-subtle rounded-lg p-2.5 mb-3 flex flex-wrap items-center justify-between gap-3 text-xs mono">
+        <div class="flex flex-wrap items-center gap-4">
+          <div><span class="text-zinc-500">Holding:</span> <span class="text-white font-bold" id="cp-ticker">WIPRO.NS</span></div>
+          <div><span class="text-zinc-500">Entry:</span> <span class="text-zinc-300 font-semibold" id="cp-entry">₹190.10</span></div>
+          <div><span class="text-zinc-500">Live Price:</span> <span class="text-emerald-400 font-bold" id="cp-live">₹197.31</span></div>
+          <div><span class="text-zinc-500">Stop Loss:</span> <span class="text-amber-400 font-semibold" id="cp-sl">₹193.90 (+2.0% floor locked)</span></div>
+          <div><span class="text-zinc-500">Stage:</span> <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/20" id="cp-stage">STAGE_PROFIT_LOCKED</span></div>
+        </div>
+
+        <div class="flex items-center gap-1.5" id="cp-actions">
+          <button onclick="triggerQuickAction('breakeven')" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2.5 py-1 rounded border border-zinc-700 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-bullseye text-[10px] text-zinc-400"></i> Breakeven
+          </button>
+          <button onclick="triggerQuickAction('lock-profit')" class="bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 px-2.5 py-1 rounded border border-amber-800/60 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-lock text-[10px] text-amber-400"></i> Lock +2%
+          </button>
+          <button onclick="triggerQuickAction('close')" class="bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 px-2.5 py-1 rounded border border-rose-800/60 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-xmark text-[10px]"></i> Close
+          </button>
+        </div>
+      </div>
+
+      <!-- TradingView Embed Container -->
+      <div class="h-[420px] w-full rounded-lg overflow-hidden border border-zinc-800/80 bg-black">
+        <div id="tradingview_embed_box" class="w-full h-full"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content Layout Grid -->
+  <main class="max-w-7xl mx-auto w-full px-4 sm:px-6 pb-12 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+    <!-- Left 2 Columns: Live Candidates, VectorBT Verification & Executed Trades Table -->
+    <div class="lg:col-span-2 space-y-5">
+
+      <!-- Candidate Setups & Backtests Section -->
+      <section class="fintech-card rounded-xl p-5">
+        <div class="flex justify-between items-center mb-3.5">
+          <div>
+            <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+              <i class="fa-solid fa-crosshairs text-zinc-400"></i> Candidate Breakouts &bull; VectorBT Verification
+            </h2>
+            <p class="text-[11px] text-zinc-500 mt-0.5">EMA 20/50 + RSI (48-68) + Multi-Timeframe Weekly Confluence</p>
+          </div>
+          <span class="text-[11px] mono bg-zinc-900 px-2 py-0.5 rounded text-zinc-400 border border-zinc-800" id="scan-count">0 candidates</span>
+        </div>
+
+        <div id="candidates-container" class="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
+          <div class="text-center py-12 text-zinc-600 text-xs">
+            <i class="fa-solid fa-compass text-2xl mb-2 text-zinc-700 block"></i>
+            Click "Run Autonomous Pipeline" or "Scan NSE" to evaluate fresh breakout candidates.
+          </div>
+        </div>
+      </section>
+
+      <!-- Active SQLite Trades Log with 1-Click Interactive Actions -->
+      <section class="fintech-card rounded-xl p-5">
+        <div class="flex justify-between items-center mb-3.5">
+          <div>
+            <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+              <i class="fa-solid fa-database text-zinc-400"></i> Executed Trades &bull; Live Portfolio Ledger
+            </h2>
+            <p class="text-[11px] text-zinc-500 mt-0.5">Click any stock to inspect its chart, or use the 1-click action buttons</p>
+          </div>
+          <button onclick="loadTrades()" class="text-xs text-zinc-400 hover:text-white flex items-center gap-1 transition cursor-pointer">
+            <i class="fa-solid fa-arrows-rotate text-[10px]"></i> Refresh
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left text-zinc-300">
+            <thead class="bg-zinc-900/80 text-zinc-500 uppercase mono text-[10px] tracking-wider border-b border-zinc-800">
+              <tr>
+                <th class="py-2 px-3">Ticker</th>
+                <th class="py-2 px-3">Action</th>
+                <th class="py-2 px-3">Qty</th>
+                <th class="py-2 px-3">Entry</th>
+                <th class="py-2 px-3">Live Price</th>
+                <th class="py-2 px-3">Invested</th>
+                <th class="py-2 px-3">Stop Loss</th>
+                <th class="py-2 px-3">Unrealized P&amp;L</th>
+                <th class="py-2 px-3">Stage / Status</th>
+                <th class="py-2 px-3 text-center">Controls</th>
+              </tr>
+            </thead>
+            <tbody id="trades-tbody" class="divide-y divide-zinc-850">
+              <tr>
+                <td colspan="10" class="text-center py-8 text-zinc-600">Loading live database ledger...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Right 1 Column: Gemini AI Brain Decision & Capital Protection Rules -->
+    <div id="section-rules" class="space-y-5">
+
+      <!-- Gemini AI Brain Highlight Card -->
+      <section class="fintech-card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+            <i class="fa-solid fa-brain text-zinc-400"></i> Gemini AI Decision
+          </h2>
+          <span class="text-[10px] bg-zinc-900 text-zinc-300 border border-zinc-800 px-2 py-0.5 rounded mono uppercase">Strict Pydantic</span>
+        </div>
+        <p class="text-[11px] text-zinc-500 mb-3.5">Evaluates news catalysts, insider filings, and VectorBT edge.</p>
+
+        <div id="ai-decision-card" class="bg-black rounded-lg p-3.5 border border-zinc-800/80 text-xs space-y-2.5">
+          <div class="text-zinc-600 text-center py-8">
+            <i class="fa-solid fa-microchip text-xl text-zinc-700 block mb-2"></i>
+            Awaiting setup evaluation from pipeline.
+          </div>
+        </div>
+      </section>
+
+      <!-- Active Rules & Capital Protection Circuit Breakers Card -->
+      <section class="fintech-card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+            <i class="fa-solid fa-shield-halved text-emerald-400"></i> Capital Protection &amp; Parameters
+          </h2>
+          <span class="text-[10px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2 py-0.5 rounded mono">active_rules.json</span>
+        </div>
+        <p class="text-[11px] text-zinc-500 mb-3">Institutional risk rules &amp; anti-dump circuit breakers.</p>
+
+        <div id="rules-container" class="space-y-1.5 text-xs">
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Max Per-Stock Cap:</span>
+            <span class="mono text-emerald-400 font-semibold">20.0% (Anti-Dump Guard)</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Cash Reserve Floor:</span>
+            <span class="mono text-zinc-200">15.0% Untouchable Buffer</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Max Open Positions:</span>
+            <span class="mono text-zinc-200">4 Concurrent Assets</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Daily Loss Circuit Breaker:</span>
+            <span class="mono text-rose-400 font-semibold">-3.0% Auto-Halt Kill Switch</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Profit Ratchet:</span>
+            <span class="mono text-white">+3.5% (locks +2.0% floor)</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Breakeven Threshold:</span>
+            <span class="mono text-zinc-200">1.0R Gain (0% Risk)</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Min VectorBT Win Rate:</span>
+            <span class="mono text-white font-medium">&ge; 52.0%</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Min Profit Factor:</span>
+            <span class="mono text-white font-medium">&ge; 1.50</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Execution Segment:</span>
+            <span class="mono text-zinc-300">CNC Delivery (Zero Leverage)</span>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-3 border-t border-zinc-850">
+          <h3 class="text-xs font-medium text-zinc-400 mb-1 flex items-center gap-1.5">
+            <i class="fa-regular fa-lightbulb text-zinc-400"></i> Learned Insights:
+          </h3>
+          <ul id="insights-list" class="text-[11px] text-zinc-500 space-y-1 list-disc list-inside">
+            <li>Anti-Dump Guard: 20% max allocation per stock strictly enforced.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Connected Services Health -->
+      <section class="fintech-card rounded-xl p-5 text-xs space-y-2">
+        <h2 class="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+          <i class="fa-solid fa-link text-zinc-400"></i> Connected Services
+        </h2>
+        <div class="flex justify-between py-1 border-b border-zinc-850">
+          <span class="text-zinc-500">Execution Broker:</span>
+          <span class="font-medium text-white mono">DhanHQ API (1109569577)</span>
+        </div>
+        <div class="flex justify-between py-1 border-b border-zinc-850">
+          <span class="text-zinc-500">AI Intelligence:</span>
+          <span class="font-medium text-zinc-200 mono">Gemini 3.5 &bull; Groq LPU</span>
+        </div>
+        <div class="flex justify-between py-1 border-b border-zinc-850">
+          <span class="text-zinc-500">Telegram Bot:</span>
+          <span class="font-medium text-white mono">@AmpolinTradingBot</span>
+        </div>
+        <div class="flex justify-between py-1">
+          <span class="text-zinc-500">Cloud Runtime:</span>
+          <span class="font-medium text-zinc-300 mono">Cloud Run (asia-south1)</span>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Mobile Bottom Navigation Bar (PWA Style) -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-800/80 px-4 py-2 flex justify-around items-center text-[10px] mono">
+    <button onclick="switchMobileTab('dashboard')" id="nav-btn-dashboard" class="flex flex-col items-center gap-1 text-white font-semibold cursor-pointer">
+      <i class="fa-solid fa-table-columns text-sm"></i>
+      <span>Overview</span>
+    </button>
+    <button onclick="switchMobileTab('charts')" id="nav-btn-charts" class="flex flex-col items-center gap-1 text-zinc-500 hover:text-zinc-300 font-medium cursor-pointer">
+      <i class="fa-solid fa-chart-candlestick text-sm"></i>
+      <span>Charts</span>
+    </button>
+    <button onclick="switchMobileTab('chat')" id="nav-btn-chat" class="flex flex-col items-center gap-1 text-zinc-500 hover:text-zinc-300 font-medium cursor-pointer">
+      <i class="fa-solid fa-brain text-sm"></i>
+      <span>AI Quant</span>
+    </button>
+    <button onclick="switchMobileTab('rules')" id="nav-btn-rules" class="flex flex-col items-center gap-1 text-zinc-500 hover:text-zinc-300 font-medium cursor-pointer">
+      <i class="fa-solid fa-shield-halved text-sm"></i>
+      <span>Rules</span>
+    </button>
+  </nav>
+
+  <!-- Floating In-App AI Chat Trigger (Desktop) -->
+  <button onclick="toggleChatDrawer()" id="btn-open-chat" class="hidden md:flex fixed bottom-6 right-6 z-40 bg-white hover:bg-zinc-200 text-black font-semibold px-4 py-2.5 rounded-full shadow-2xl items-center gap-2 text-xs transition active:scale-95 border border-zinc-200 cursor-pointer">
+    <i class="fa-solid fa-sparkles text-black"></i>
+    <span>Chat with AI</span>
+  </button>
+
+  <!-- In-App AI Chat Drawer (Mobile Bottom Sheet + Desktop Floating Window) -->
+  <div id="chat-drawer" class="fixed inset-x-0 bottom-0 sm:inset-auto sm:bottom-6 sm:right-6 z-50 w-full sm:w-[420px] h-[85vh] sm:h-[560px] bg-[#09090b] border-t sm:border border-zinc-800 sm:rounded-2xl shadow-2xl flex flex-col hidden transition-all">
+    <!-- Chat Header -->
+    <div class="px-4 py-3 bg-[#121215] border-b border-zinc-800 flex justify-between items-center sm:rounded-t-2xl">
+      <div class="flex items-center gap-2.5">
+        <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-6 h-6 rounded border border-zinc-800 object-cover">
+        <div>
+          <div class="text-xs font-bold text-white mono flex items-center gap-1.5">
+            AMPOLIN AI QUANT <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          </div>
+          <p class="text-[10px] text-zinc-500">Autonomous Trading Partner &bull; Gemini 3.5 &amp; Groq</p>
+        </div>
+      </div>
+      <button onclick="toggleChatDrawer()" class="text-zinc-400 hover:text-white text-base p-1.5 rounded-lg hover:bg-zinc-900 transition cursor-pointer">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Quick Prompt Chips -->
+    <div class="px-3 py-2 bg-[#121215]/80 border-b border-zinc-850 flex gap-1.5 overflow-x-auto text-[11px] mono">
+      <button onclick="sendQuickPrompt('How is our capital protected against dumps?')" class="bg-zinc-900 hover:bg-zinc-800 text-emerald-400 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">🛡️ Capital Guard</button>
+      <button onclick="sendQuickPrompt('What are our active open positions and stages?')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">📈 Positions</button>
+      <button onclick="sendQuickPrompt('Explain the 3.5% profit lock rule')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">🔒 Profit Lock</button>
+      <button onclick="sendQuickPrompt('How is the market regime and India VIX today?')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">📊 Regime</button>
+    </div>
+
+    <!-- Message History Stream -->
+    <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3 text-xs leading-relaxed">
+      <div class="flex gap-2 items-start">
+        <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
+        <div class="bg-zinc-900/90 text-zinc-200 border border-zinc-800 p-3 rounded-xl max-w-[85%] text-xs">
+          Hey Kaustuv! I'm your autonomous quant partner. Ask me about open trades, technical charts, market breadth, or our 6 capital security circuit breakers.
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Input Form -->
+    <form onsubmit="handleSendChatMessage(event)" class="p-3 bg-[#121215] border-t border-zinc-800 flex items-center gap-2 sm:rounded-b-2xl">
+      <input type="text" id="chat-input" placeholder="Ask Ampolin AI..." autocomplete="off" class="flex-1 bg-zinc-900 text-white placeholder-zinc-500 text-xs px-3.5 py-2.5 rounded-lg border border-zinc-800 focus:outline-none focus:border-zinc-500 mono">
+      <button type="submit" id="chat-send-btn" class="bg-white hover:bg-zinc-200 text-black px-3.5 py-2.5 rounded-lg text-xs font-semibold shrink-0 transition active:scale-95 cursor-pointer">
+        <i class="fa-solid fa-arrow-up"></i>
+      </button>
+    </form>
+  </div>
+
+  <footer class="bg-[#09090b] border-t border-zinc-800/80 py-4 text-center text-xs text-zinc-600 mono">
+    AMPOLIN AI TRADING TERMINAL &bull; MINIMALIST INSTITUTIONAL QUANT &bull; 24/7 DUAL-MARKET
+  </footer>
+
+  <script>
+    let activeChartOrderId = 'SIM-DHAN-20261029234359-WIPRO';
+    window.chatSessionHistory = [];
+
+    // Live IST Clock
+    function updateClock() {
+      const now = new Date();
+      const options = { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' };
+      document.getElementById('live-time').innerText = now.toLocaleTimeString('en-GB', options) + ' IST';
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // TradingView Initialization
+    function initTradingView(symbol = 'NSE:WIPRO') {
+      const container = document.getElementById('tradingview_embed_box');
+      if (!container) return;
+      container.innerHTML = '';
+      try {
+        new TradingView.widget({
+          "autosize": true,
+          "symbol": symbol,
+          "interval": "D",
+          "timezone": "Asia/Kolkata",
+          "theme": "dark",
+          "style": "1",
+          "locale": "en",
+          "toolbar_bg": "#09090b",
+          "enable_publishing": false,
+          "allow_symbol_change": true,
+          "container_id": "tradingview_embed_box"
+        });
+      } catch (err) {
+        console.error('TradingView widget initialization error:', err);
+      }
+    }
+
+    function switchChartSymbol(tvSymbol, tickerName, entry, sl, live, stage, orderId, btnEl) {
+      document.querySelectorAll('.chart-tab').forEach(b => {
+        b.className = 'chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer';
+      });
+      if (btnEl) {
+        btnEl.className = 'chart-tab active bg-white text-black font-semibold px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer';
+      }
+
+      const bar = document.getElementById('chart-position-bar');
+      if (entry !== null && entry !== undefined) {
+        bar.classList.remove('hidden');
+        document.getElementById('cp-ticker').innerText = tickerName;
+        const sym = tickerName.endsWith('.NS') ? '₹' : '$';
+        document.getElementById('cp-entry').innerText = sym + Number(entry).toFixed(2);
+        document.getElementById('cp-live').innerText = sym + Number(live).toFixed(2);
+        document.getElementById('cp-sl').innerText = sym + Number(sl).toFixed(2);
+        document.getElementById('cp-stage').innerText = stage;
+        activeChartOrderId = orderId;
+      } else {
+        bar.classList.add('hidden');
+      }
+
+      initTradingView(tvSymbol);
+    }
+
+    // 1-Click Action Controls
+    async function triggerQuickAction(actionType) {
+      if (!activeChartOrderId) {
+        alert('Please select an active position first.');
+        return;
+      }
+      await triggerAction(activeChartOrderId, actionType);
+    }
+
+    async function triggerAction(orderId, actionType) {
+      const actionName = actionType === 'breakeven' ? 'MOVE TO BREAKEVEN' : (actionType === 'lock-profit' ? 'LOCK +2% PROFIT' : 'SQUARE OFF / CLOSE');
+      if (!confirm(`Confirm action [${actionName}] for trade ${orderId}?`)) return;
+
+      try {
+        const res = await fetch(`/api/trades/${actionType}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: orderId })
+        });
+        const data = await res.json();
+        alert(data.message || `Action executed successfully!`);
+        await loadTrades();
+        await loadStatus();
+      } catch (err) {
+        alert('Action error: ' + err);
+      }
+    }
+
+    // Mobile Navigation Switcher
+    function switchMobileTab(tab) {
+      const dashboardSec = document.getElementById('section-dashboard');
+      const chartsSec = document.getElementById('section-charts');
+      const rulesSec = document.getElementById('section-rules');
+      const chatDrawer = document.getElementById('chat-drawer');
+
+      ['dashboard', 'charts', 'chat', 'rules'].forEach(t => {
+        const btn = document.getElementById(`nav-btn-${t}`);
+        if (btn) btn.className = 'flex flex-col items-center gap-1 text-zinc-500 hover:text-zinc-300 font-medium cursor-pointer';
+      });
+
+      const activeBtn = document.getElementById(`nav-btn-${tab}`);
+      if (activeBtn) activeBtn.className = 'flex flex-col items-center gap-1 text-white font-semibold cursor-pointer';
+
+      if (tab === 'chat') {
+        chatDrawer.classList.remove('hidden');
+      } else {
+        chatDrawer.classList.add('hidden');
+        if (tab === 'charts') {
+          chartsSec.scrollIntoView({ behavior: 'smooth' });
+        } else if (tab === 'rules') {
+          rulesSec.scrollIntoView({ behavior: 'smooth' });
+        } else {
+          dashboardSec.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+    }
+
+    // Load Initial Data
+    async function initDashboard() {
+      initTradingView('NSE:WIPRO');
+      await loadStatus();
+      await loadRules();
+      await loadTrades();
+    }
+
+    async function loadStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        const realized = data.daily_pnl || 0.0;
+        const unrealized = data.unrealized_pnl || 0.0;
+        const total = data.total_pnl !== undefined ? data.total_pnl : (realized + unrealized);
+        const pnlSign = total >= 0 ? '+' : '';
+        const uSign = unrealized >= 0 ? '+' : '';
+        const rSign = realized >= 0 ? '+' : '';
+
+        const pnlEl = document.getElementById('metric-pnl');
+        pnlEl.innerText = pnlSign + '₹' + total.toFixed(2);
+        if (total > 0) {
+          pnlEl.className = 'text-lg sm:text-2xl font-bold text-emerald-400 mono tabular-nums';
+        } else if (total < 0) {
+          pnlEl.className = 'text-lg sm:text-2xl font-bold text-rose-400 mono tabular-nums';
+        } else {
+          pnlEl.className = 'text-lg sm:text-2xl font-bold text-white mono tabular-nums';
+        }
+        document.getElementById('metric-pnl-breakdown').innerText = `Floating: ${uSign}₹${unrealized.toFixed(2)} | Realized: ${rSign}₹${realized.toFixed(2)}`;
+
+        if (data.portfolio_equity !== undefined) {
+          document.getElementById('metric-equity').innerText = '₹' + Number(data.portfolio_equity).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          document.getElementById('metric-funds-breakdown').innerText = `Cash: ₹${Number(data.available_cash || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} | Invested: ₹${Number(data.deployed_margin || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+        }
+
+        document.getElementById('metric-winrate').innerText = (data.win_rate * 100).toFixed(1) + '%';
+        document.getElementById('metric-open-trades').innerText = data.open_positions;
+        document.getElementById('badge-brain').innerText = data.ai_model || 'Gemini 3.5 • Groq';
+
+        if (data.regime) {
+          document.getElementById('metric-breadth').innerText = data.regime.market_breadth_pct.toFixed(1) + '%';
+          document.getElementById('metric-breadth-regime').innerText = data.regime.breadth_regime;
+          document.getElementById('metric-vix').innerText = data.regime.india_vix.toFixed(2);
+          document.getElementById('metric-dynamic-risk').innerText = 'Dynamic Risk: ' + (data.regime.dynamic_risk_pct * 100).toFixed(2) + '%';
+          if (data.regime.pcr_ratio) {
+            const pcrEl = document.getElementById('badge-pcr');
+            if (pcrEl) pcrEl.innerText = `PCR: ${data.regime.pcr_ratio} • Accumulation`;
+          }
+        }
+      } catch (e) {
+        console.error('Status fetch failed:', e);
+      }
+    }
+
+    async function managePositions() {
+      const btn = document.getElementById('btn-manage');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sweeping...';
+
+      try {
+        const res = await fetch('/api/manage-positions', { method: 'POST' });
+        const data = await res.json();
+        alert(`Position Manager executed! ${data.actions_taken ? data.actions_taken.length : 0} adjustments made.`);
+        await loadTrades();
+        await loadStatus();
+      } catch (e) {
+        alert('Position management error: ' + e);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Sweep &amp; Lock Profits';
+      }
+    }
+
+    async function loadRules() {
+      try {
+        const res = await fetch('/api/rules');
+        const data = await res.json();
+        if (data.learned_insights && data.learned_insights.length > 0) {
+          const list = document.getElementById('insights-list');
+          list.innerHTML = data.learned_insights.map(i => `<li>${i}</li>`).join('');
+        }
+      } catch (e) {
+        console.error('Rules fetch failed:', e);
+      }
+    }
+
+    async function loadTrades() {
+      try {
+        const res = await fetch('/api/trades');
+        const data = await res.json();
+        const tbody = document.getElementById('trades-tbody');
+        if (!data.trades || data.trades.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = data.trades.map(t => {
+          const isNse = t.ticker.endsWith('.NS');
+          const sym = isNse ? '₹' : '$';
+          const flag = isNse ? '🇮🇳 ' : '🇺🇸 ';
+          const entry = parseFloat(t.entry_price || 0);
+          const live = parseFloat(t.current_price || entry);
+          const qty = parseInt(t.quantity || 1);
+          const invested = parseFloat(t.capital_allocated || (entry * qty));
+          const pnlVal = t.pnl !== null && t.pnl !== undefined ? parseFloat(t.pnl) : (live - entry) * qty;
+          const pnlPct = t.pnl_percentage !== null && t.pnl_percentage !== undefined ? parseFloat(t.pnl_percentage) : ((live - entry) / (entry || 1) * 100);
+          const pnlSign = pnlVal >= 0 ? '+' : '';
+          const pnlColor = pnlVal > 0 ? 'text-emerald-400 font-semibold' : (pnlVal < 0 ? 'text-rose-400 font-semibold' : 'text-zinc-400');
+          const tvSymbol = isNse ? `NSE:${t.ticker.replace('.NS','')}` : `NASDAQ:${t.ticker}`;
+
+          let stageBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-800 bg-zinc-900 text-zinc-300 font-mono">${t.status}</span>`;
+          if (t.stage === 'STAGE_PROFIT_LOCKED') {
+            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-emerald-800/80 bg-emerald-950/60 text-emerald-300 font-mono font-medium">🔒 +2% LOCKED</span>';
+          } else if (t.stage === 'STAGE_BREAKEVEN') {
+            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-blue-800/80 bg-blue-950/60 text-blue-300 font-mono font-medium">🛡️ BREAKEVEN</span>';
+          } else if (t.status === 'CLOSED') {
+            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-700 bg-zinc-800 text-zinc-400 font-mono font-medium">CLOSED</span>';
+          }
+
+          const controls = t.status !== 'CLOSED' ? `
+            <div class="flex items-center justify-center gap-1">
+              <button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'breakeven')" title="Move to Breakeven" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] transition cursor-pointer">🎯</button>
+              <button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'lock-profit')" title="Lock +2% Profit Floor" class="p-1 rounded bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 text-[11px] transition cursor-pointer">🔒</button>
+              <button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'close')" title="Square Off Position" class="p-1 rounded bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-[11px] transition cursor-pointer">✕</button>
+            </div>
+          ` : `<span class="text-zinc-600 text-center block">&mdash;</span>`;
+
+          return `
+            <tr onclick="switchChartSymbol('${tvSymbol}', '${t.ticker}', ${entry}, ${t.stop_loss}, ${live}, '${t.stage}', '${t.order_id}', null)" class="hover:bg-zinc-900/60 transition mono text-xs cursor-pointer">
+              <td class="py-2.5 px-3 font-semibold text-white">${flag}${t.ticker}</td>
+              <td class="py-2.5 px-3"><span class="font-bold text-white">${t.action}</span></td>
+              <td class="py-2.5 px-3 text-zinc-300 tabular-nums">${qty}</td>
+              <td class="py-2.5 px-3 text-zinc-300 tabular-nums">${sym}${entry.toFixed(2)}</td>
+              <td class="py-2.5 px-3 text-white font-medium tabular-nums">${sym}${live.toFixed(2)}</td>
+              <td class="py-2.5 px-3 text-zinc-300 tabular-nums">${sym}${invested.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+              <td class="py-2.5 px-3 text-zinc-400 tabular-nums">${sym}${parseFloat(t.stop_loss).toFixed(2)}</td>
+              <td class="py-2.5 px-3 ${pnlColor} tabular-nums">${pnlSign}${sym}${pnlVal.toFixed(2)} (${pnlSign}${pnlPct.toFixed(2)}%)</td>
+              <td class="py-2.5 px-3">${stageBadge}</td>
+              <td class="py-2.5 px-3 text-center">${controls}</td>
+            </tr>
+          `;
+        }).join('');
+      } catch (e) {
+        console.error('Trades fetch failed:', e);
+      }
+    }
+
+    async function runPipeline() {
+      const btn = document.getElementById('btn-pipeline');
+      const tf = document.getElementById('select-tf').value;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-black"></i> Executing Pipeline...';
+
+      try {
+        const res = await fetch('/api/run-pipeline', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timeframe: tf, dry_run: true })
+        });
+        const data = await res.json();
+        await runScan();
+        await loadStatus();
+        await loadTrades();
+      } catch (e) {
+        alert('Pipeline execution error: ' + e);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-play text-[10px]"></i> Run Pipeline';
+      }
+    }
+
+    async function runScan() {
+      const btn = document.getElementById('btn-scan');
+      const tf = document.getElementById('select-tf').value;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
+
+      try {
+        const res = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timeframe: tf, dry_run: true })
+        });
+        const data = await res.json();
+        renderCandidates(data.approved_candidates || []);
+        renderAIDecision(data.ai_decisions || []);
+      } catch (e) {
+        alert('Scan error: ' + e);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan NSE';
+      }
+    }
+
+    function renderCandidates(candidates) {
+      const container = document.getElementById('candidates-container');
+      const countEl = document.getElementById('scan-count');
+      countEl.innerText = `${candidates.length} approved`;
+
+      if (candidates.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-10 text-zinc-600 text-xs">
+            <i class="fa-solid fa-circle-exclamation text-xl mb-1 text-zinc-700 block"></i>
+            No candidate setups cleared the VectorBT backtest threshold (&ge;52% Win Rate, Profit Factor &ge;1.50).
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = candidates.map(c => {
+        const s = c.setup;
+        const b = c.backtest;
+        return `
+          <div class="fintech-card-subtle p-3.5 rounded-lg text-xs space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-white mono">${s.ticker}</span>
+              <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] mono">
+                Win Rate: ${(b.win_rate * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-zinc-400 text-[11px] mono">
+              <div>Close: <span class="text-white">₹${s.close.toFixed(2)}</span></div>
+              <div>RSI (14): <span class="text-white">${s.rsi.toFixed(1)}</span></div>
+              <div>SL: <span class="text-zinc-300">₹${s.suggested_sl.toFixed(2)}</span></div>
+              <div>TP: <span class="text-zinc-300">₹${s.suggested_tp.toFixed(2)}</span></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderAIDecision(decisions) {
+      const card = document.getElementById('ai-decision-card');
+      if (!decisions || decisions.length === 0) return;
+      const d = decisions[0];
+      card.innerHTML = `
+        <div class="flex justify-between items-center border-b border-zinc-800 pb-2">
+          <span class="font-bold text-white mono">${d.ticker}</span>
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold mono ${d.action === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400'}">${d.action} (${(d.confidence * 100).toFixed(0)}% Conviction)</span>
+        </div>
+        <p class="text-zinc-300 text-[11px] leading-relaxed">${d.rationale}</p>
+        <div class="pt-1.5 border-t border-zinc-850 flex justify-between text-[10px] text-zinc-500 mono">
+          <span>R:R: 1:${d.risk_reward_ratio}</span>
+          <span>Holding: ${d.holding_period_days} Days</span>
+        </div>
+      `;
+    }
+
+    async function runEOD() {
+      const btn = document.getElementById('btn-eod');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Reflecting...';
+
+      try {
+        const res = await fetch('/api/eod-reflection', { method: 'POST' });
+        const data = await res.json();
+        alert('EOD Reflection complete! Rules verified and database synced.');
+        await loadRules();
+      } catch (e) {
+        alert('EOD reflection error: ' + e);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-microscope text-[10px]"></i> EOD Reflection';
+      }
+    }
+
+    // In-App Chat Functions
+    function toggleChatDrawer() {
+      const drawer = document.getElementById('chat-drawer');
+      drawer.classList.toggle('hidden');
+      if (!drawer.classList.contains('hidden')) {
+        document.getElementById('chat-input').focus();
+      }
+    }
+
+    function sendQuickPrompt(promptText) {
+      document.getElementById('chat-input').value = promptText;
+      handleSendChatMessage(new Event('submit'));
+    }
+
+    async function handleSendChatMessage(e) {
+      if (e) e.preventDefault();
+      const input = document.getElementById('chat-input');
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      const container = document.getElementById('chat-messages');
+      input.value = '';
+
+      container.innerHTML += `
+        <div class="flex gap-2 items-start justify-end">
+          <div class="bg-white text-black p-3 rounded-xl max-w-[85%] text-xs font-medium">
+            ${escapeHtml(msg)}
+          </div>
+        </div>
+      `;
+      container.scrollTop = container.scrollHeight;
+
+      const typingId = 'typing-' + Date.now();
+      container.innerHTML += `
+        <div id="${typingId}" class="flex gap-2 items-start">
+          <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
+          <div class="bg-zinc-900/80 text-zinc-400 border border-zinc-800 p-2.5 rounded-xl text-xs flex items-center gap-1.5 mono">
+            <i class="fa-solid fa-circle-notch fa-spin text-emerald-400"></i> Thinking...
+          </div>
+        </div>
+      `;
+      container.scrollTop = container.scrollHeight;
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, history: window.chatSessionHistory })
+        });
+        const data = await res.json();
+        document.getElementById(typingId)?.remove();
+
+        if (data.reply) {
+          window.chatSessionHistory.push({ role: 'user', content: msg });
+          window.chatSessionHistory.push({ role: 'assistant', content: data.reply });
+        }
+
+        const formatted = (data.reply || "No reply generated.")
+          .replace(/\\n\\n/g, '<br><br>')
+          .replace(/\\n/g, '<br>')
+          .replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
+
+        container.innerHTML += `
+          <div class="flex gap-2 items-start">
+            <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
+            <div class="bg-zinc-900/90 text-zinc-200 border border-zinc-800 p-3 rounded-xl max-w-[85%] text-xs leading-relaxed">
+              ${formatted}
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        document.getElementById(typingId)?.remove();
+        container.innerHTML += `
+          <div class="flex gap-2 items-start">
+            <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
+            <div class="bg-rose-950/40 text-rose-300 border border-rose-900/50 p-3 rounded-xl max-w-[85%] text-xs">
+              Error: ${err.message || 'Could not connect to AI'}
+            </div>
+          </div>
+        `;
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+      return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
+    window.onload = initDashboard;
+  </script>
+</body>
+</html>

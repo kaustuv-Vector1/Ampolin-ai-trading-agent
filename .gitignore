@@ -29,6 +29,8 @@ nohup.out
 .DS_Store
 Thumbs.db
 desktop.ini
+*.lnk
+*.vbs
 
 # Antigravity/Editor configs
 .gemini/
