@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "timestamp": "2026-10-30T16:16:47.855461",
+  "timestamp": "2026-10-30T17:01:07.474879",
   "open_positions_count": 3,
   "total_trades_count": 3,
   "trades": [
@@ -92,7 +92,7 @@
       "total_trades": 3,
       "win_count": 0,
       "loss_count": 0,
-      "updated_at": "2026-10-30T15:49:34.028152"
+      "updated_at": "2026-10-30T16:58:55.395472"
     },
     {
       "date": "2026-10-29",
@@ -118,7 +118,7 @@
   "active_rules": {
     "system_name": "Ampolin AI Trading Agent",
     "version": "1.0.0",
-    "last_updated": "2026-10-29T22:15:06.817289",
+    "last_updated": "2026-10-30T16:25:00.000000",
     "rules": {
       "ema_fast": 20,
       "ema_slow": 50,
@@ -131,6 +131,10 @@
       "min_win_rate": 0.45,
       "min_expectancy": 0.0,
       "max_account_risk_pct": 0.01,
+      "max_capital_per_stock_pct": 0.2,
+      "max_open_positions": 4,
+      "min_cash_reserve_pct": 0.15,
+      "max_daily_loss_pct": 0.03,
       "min_confidence_to_trade": 0.65,
       "backtest_lookback_days": 90,
       "preferred_timeframes": [
@@ -142,7 +146,8 @@
     "learned_insights": [
       "Initial baseline: EMA 20/50 breakout filtered by RSI 48-68 prevents entering at overbought peaks.",
       "ATR 1.5x stop loss gives adequate room for Indian Equities swing volatility without getting prematurely stopped by noise.",
-      "CNC Delivery avoids intraday square-off margin pressure and allows capturing multi-day swing momentum."
+      "CNC Delivery avoids intraday square-off margin pressure and allows capturing multi-day swing momentum.",
+      "Anti-Dump & Capital Security: Hard cap of 20% capital per stock and max 4 open positions mathematically prevents single-stock portfolio destruction."
     ],
     "adjustments_history": [
       {

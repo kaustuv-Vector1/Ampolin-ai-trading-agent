@@ -122,9 +122,9 @@ class MultiProviderLLM:
             full_prompt += f"\n\n=== RECENT DIALOGUE THREAD ===\n{history_str}"
         full_prompt += f"\n\nTrader: {user_prompt}\nAmpolin AI:"
 
-        # 1. Try Gemini
+        # 1. Try Gemini (Prioritize verified fast models)
         if self.gemini_client:
-            models_to_try = [self.gemini_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.5-flash-lite"]
+            models_to_try = ["gemini-3.5-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash", self.gemini_model]
             seen = set()
             gemini_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
@@ -164,9 +164,9 @@ class MultiProviderLLM:
         1. Tries Gemini with Pydantic JSON schema.
         2. On quota limit, falls back to Groq in json_object mode.
         """
-        # 1. Try Gemini
+        # 1. Try Gemini (Prioritize verified fast models)
         if self.gemini_client:
-            models_to_try = [self.gemini_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.5-flash-lite"]
+            models_to_try = ["gemini-3.5-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash", self.gemini_model]
             seen = set()
             gemini_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
             for model in gemini_models:

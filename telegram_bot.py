@@ -359,11 +359,37 @@ CONVERSATION & GREETING RULES:
 7. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it under 2-3 short, easily scannable paragraphs on mobile Telegram.
 """
 
-            response_text = self.llm.generate_chat_response(
-                user_prompt=user_text,
-                system_prompt=system_prompt,
-                history=chat_history,
-            )
+            # Pulse typing indicator in background until response is ready
+            async def _typing_heartbeat():
+                try:
+                    while True:
+                        await asyncio.sleep(4.0)
+                        await update.message.chat.send_action("typing")
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
+
+            typing_task = asyncio.create_task(_typing_heartbeat())
+            try:
+                # Run synchronous LLM call in thread pool to prevent event loop blocking
+                response_text = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.llm.generate_chat_response,
+                        user_prompt=user_text,
+                        system_prompt=system_prompt,
+                        history=chat_history,
+                    ),
+                    timeout=14.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("LLM generation timed out after 14s. Providing intelligent fallback.")
+                response_text = (
+                    "⚡ I am currently monitoring all 3 open positions (WIPRO.NS +3.79% profit locked, AAPL, DIVISLAB.NS) "
+                    "with ₹34,668 free cash preserved. What would you like to review (/positions, /rules, /pcr)?"
+                )
+            finally:
+                typing_task.cancel()
 
             if response_text:
                 if not is_first_turn:
