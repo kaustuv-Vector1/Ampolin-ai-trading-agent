@@ -288,30 +288,34 @@ class InteractiveTelegramBot:
         chat_id = str(update.effective_chat.id)
         logger.info(f"Incoming Telegram chat message: '{user_text}' from chat_id: {chat_id}")
 
-        # Show typing status
-        await update.message.chat.send_action("typing")
+        try:
+            # Show typing status
+            await update.message.chat.send_action("typing")
 
-        open_trades = self.logger.get_open_trades()
-        positions_str = ", ".join([f"{t['ticker']} (entry: {t['entry_price']}, stage: {t.get('stage','INITIAL')})" for t in open_trades]) or "None (100% Cash)"
-        summary = self.logger.calculate_daily_summary()
+            open_trades = self.logger.get_open_trades()
+            positions_str = ", ".join([f"{t['ticker']} (entry: {t['entry_price']}, stage: {t.get('stage','INITIAL')})" for t in open_trades]) or "None (100% Cash)"
+            summary = self.logger.calculate_daily_summary()
 
-        starting_capital = 100000.0
-        deployed_margin = sum(float(t.get("capital_allocated") or 0.0) for t in open_trades)
-        available_cash = round(starting_capital - deployed_margin + summary.get("realized_pnl", 0.0), 2)
-        portfolio_equity = round(starting_capital + summary.get("total_pnl", 0.0), 2)
+            starting_capital = 100000.0
+            deployed_margin = sum(float(t.get("capital_allocated") or 0.0) for t in open_trades)
+            available_cash = round(starting_capital - deployed_margin + summary.get("realized_pnl", 0.0), 2)
+            portfolio_equity = round(starting_capital + summary.get("total_pnl", 0.0), 2)
 
-        chat_history = self.chat_memories[chat_id]
-        is_first_turn = len(chat_history) == 0
+            # Safely fetch or initialize chat history for this chat_id
+            if chat_id not in self.chat_memories:
+                self.chat_memories[chat_id] = []
+            chat_history = self.chat_memories[chat_id]
+            is_first_turn = len(chat_history) == 0
 
-        recent_alerts = get_recent_notifications()
-        recent_alerts_str = "\n".join([f"• {a}" for a in recent_alerts[-3:]]) if recent_alerts else "No alerts sent recently."
+            recent_alerts = get_recent_notifications()
+            recent_alerts_str = "\n".join([f"• {a}" for a in recent_alerts[-3:]]) if recent_alerts else "No alerts sent recently."
 
-        if is_first_turn:
-            greeting_rule = "GREETING RULE: Since this is the FIRST message of the conversation, you may start with a brief, friendly greeting like 'Hey Kaustuv.' followed immediately by the answer."
-        else:
-            greeting_rule = "CRITICAL GREETING RULE: This is an ongoing conversation / follow-up message. DO NOT SAY 'Hey Kaustuv', 'Hello Kaustuv', 'Hi Kaustuv', or ANY opening greeting whatsoever. Start directly with the answer or insight."
+            if is_first_turn:
+                greeting_rule = "GREETING RULE: Since this is the FIRST message of the conversation, you may start with a brief, friendly greeting like 'Hey Kaustuv.' followed immediately by the answer."
+            else:
+                greeting_rule = "CRITICAL GREETING RULE: This is an ongoing conversation / follow-up message. DO NOT SAY 'Hey Kaustuv', 'Hello Kaustuv', 'Hi Kaustuv', or ANY opening greeting whatsoever. Start directly with the answer or insight."
 
-        system_prompt = f"""
+            system_prompt = f"""
 You are Ampolin AI, an institutional-grade quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
 
 Current Portfolio & Funds Context:
@@ -355,7 +359,6 @@ CONVERSATION & GREETING RULES:
 7. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it under 2-3 short, easily scannable paragraphs on mobile Telegram.
 """
 
-        try:
             response_text = self.llm.generate_chat_response(
                 user_prompt=user_text,
                 system_prompt=system_prompt,
@@ -367,6 +370,9 @@ CONVERSATION & GREETING RULES:
                     # Strip any greeting that leaked through
                     response_text = re.sub(r'^(Hey|Hello|Hi)\s+Kaustuv[\.,!:\s]*\n*', '', response_text, flags=re.IGNORECASE).strip()
                     response_text = re.sub(r'^\*{1,2}(Hey|Hello|Hi)\s+Kaustuv[\.,!:\s]*\*{1,2}\n*', '', response_text, flags=re.IGNORECASE).strip()
+
+                if not response_text:
+                    response_text = "I'm monitoring all active positions and market channels. What would you like to review?"
 
                 # Update memory
                 chat_history.append({"role": "user", "content": user_text})
@@ -380,8 +386,11 @@ CONVERSATION & GREETING RULES:
                 await update.message.reply_text("I'm reviewing the live market data feeds right now. Could you ask that once more?")
 
         except Exception as e:
-            logger.error(f"Error handling Telegram chat: {e}")
-            await update.message.reply_text(f"Oops, error processing your message: {e}")
+            logger.error(f"Error handling Telegram chat: {e}", exc_info=True)
+            try:
+                await update.message.reply_text(f"⚠️ Apologies Kaustuv, I encountered a brief issue: {e}. Please try sending your message again!")
+            except Exception:
+                pass
 
     def build_application(self):
         """Constructs the telegram Application with handlers."""

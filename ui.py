@@ -183,6 +183,8 @@ CONVERSATION & GREETING RULES:
     elif not is_first_turn:
         reply = re.sub(r'^(Hey|Hello|Hi)\s+Kaustuv[\.,!:\s]*\n*', '', reply, flags=re.IGNORECASE).strip()
         reply = re.sub(r'^\*{1,2}(Hey|Hello|Hi)\s+Kaustuv[\.,!:\s]*\*{1,2}\n*', '', reply, flags=re.IGNORECASE).strip()
+        if not reply:
+            reply = "I'm monitoring all active positions and market channels. What would you like to review?"
 
     return {"reply": reply}
 

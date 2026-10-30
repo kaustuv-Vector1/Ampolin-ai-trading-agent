@@ -61,8 +61,8 @@ class MultiProviderLLM:
             logger.warning("Groq API key not configured.")
             return None
 
-        primary_model = model or self.groq_model or "qwen/qwen3.8-27b"
-        groq_models_to_try = [primary_model, "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+        primary_model = model or self.groq_model or "llama-3.3-70b-versatile"
+        groq_models_to_try = [primary_model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3.8-27b"]
         # Deduplicate
         seen = set()
         models = [m for m in groq_models_to_try if not (m in seen or seen.add(m))]
@@ -124,7 +124,7 @@ class MultiProviderLLM:
 
         # 1. Try Gemini
         if self.gemini_client:
-            models_to_try = [self.gemini_model, "gemini-3.8-flash", "gemini-4-argon", "gemini-3.5-flash-lite", "gemini-2.5-flash"]
+            models_to_try = [self.gemini_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.5-flash-lite"]
             seen = set()
             gemini_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
@@ -166,7 +166,7 @@ class MultiProviderLLM:
         """
         # 1. Try Gemini
         if self.gemini_client:
-            models_to_try = [self.gemini_model, "gemini-3.8-flash", "gemini-4-argon", "gemini-3.5-flash-lite"]
+            models_to_try = [self.gemini_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.5-flash-lite"]
             seen = set()
             gemini_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
             for model in gemini_models:
