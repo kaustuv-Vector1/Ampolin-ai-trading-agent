@@ -1,0 +1,157 @@
+{
+  "version": "2.0.0",
+  "timestamp": "2026-10-30T16:16:47.855461",
+  "open_positions_count": 3,
+  "total_trades_count": 3,
+  "trades": [
+    {
+      "id": 1,
+      "order_id": "SIM-DHAN-20261029234345-DIVISLAB",
+      "ticker": "DIVISLAB.NS",
+      "action": "BUY",
+      "entry_price": 9664.0,
+      "stop_loss": 9293.98,
+      "take_profit": 10404.03,
+      "quantity": 2,
+      "capital_allocated": 19328.0,
+      "risk_amount": 740.04,
+      "status": "SIMULATED_FILLED",
+      "exit_price": null,
+      "pnl": 32.0,
+      "pnl_percentage": 0.17,
+      "confidence": 0.85,
+      "rationale": "Strong trend momentum expansion with Fast EMA above Slow EMA and RSI in the optimal sweet spot of 61.9. VectorBT backtest confirms a high win rate of 62.5% and a robust profit factor of 3.00, supporting continuation toward the 1:2.0 risk-reward target.",
+      "entry_time": "2026-10-29 23:43:45",
+      "exit_time": null,
+      "is_paper_trade": 1,
+      "metadata_json": "{\"risk_reward_ratio\": 2.0, \"holding_period_days\": 7, \"key_risks\": \"Volume is currently subdued at 0.67x of 20 MA. Failure to hold the 20 EMA at \\u20b99293.98 will invalidate the bullish technical structure.\", \"backtest_win_rate\": 0.625, \"backtest_expectancy\": 2103.58, \"raw_response\": {\"status\": \"success\", \"mode\": \"paper_trading\", \"orderId\": \"SIM-DHAN-20261029234345-DIVISLAB\", \"message\": \"Order simulated under 1% account risk parameters.\"}}",
+      "initial_quantity": 2,
+      "stage": "STAGE_INITIAL",
+      "partial_exit_taken": 0,
+      "current_price": 9680.0
+    },
+    {
+      "id": 2,
+      "order_id": "SIM-DHAN-20261029234359-WIPRO",
+      "ticker": "WIPRO.NS",
+      "action": "BUY",
+      "entry_price": 190.1,
+      "stop_loss": 193.9,
+      "take_profit": 205.42,
+      "quantity": 97,
+      "capital_allocated": 18439.7,
+      "risk_amount": 743.02,
+      "status": "SIMULATED_FILLED",
+      "exit_price": null,
+      "pnl": 699.37,
+      "pnl_percentage": 3.79,
+      "confidence": 0.82,
+      "rationale": "Strong EMA trend momentum expansion with Fast EMA well above Slow EMA. RSI at 67.8 sits comfortably within the optimal bullish sweet spot. Backtest verification shows a positive expectancy per rupee, a strong profit factor of 1.81, and a low max drawdown.",
+      "entry_time": "2026-10-29 23:43:59",
+      "exit_time": null,
+      "is_paper_trade": 1,
+      "metadata_json": "{\"risk_reward_ratio\": 2.0, \"holding_period_days\": 5, \"key_risks\": \"Volume ratio is slightly below average at 0.74x, suggesting potential lack of immediate follow-through. Invalidation occurs if price breaches the 20 EMA and closes below the technical stop loss of \\u20b9182.44.\", \"backtest_win_rate\": 0.5, \"backtest_expectancy\": 344.52, \"raw_response\": {\"status\": \"success\", \"mode\": \"paper_trading\", \"orderId\": \"SIM-DHAN-20261029234359-WIPRO\", \"message\": \"Order simulated under 1% account risk parameters.\"}}",
+      "initial_quantity": 97,
+      "stage": "STAGE_PROFIT_LOCKED",
+      "partial_exit_taken": 0,
+      "current_price": 197.31
+    },
+    {
+      "id": 3,
+      "order_id": "SIM-DHAN-20261030151823-AAPL",
+      "ticker": "AAPL",
+      "action": "BUY",
+      "entry_price": 348.91,
+      "stop_loss": 339.51,
+      "take_profit": 367.71,
+      "quantity": 79,
+      "capital_allocated": 27563.89,
+      "risk_amount": 742.6,
+      "status": "SIMULATED_FILLED",
+      "exit_price": null,
+      "pnl": 180.91,
+      "pnl_percentage": 0.66,
+      "confidence": 0.78,
+      "rationale": "Strong multi-timeframe bullish alignment with Fast EMA above Slow EMA and weekly confluence. RSI is in the optimal 61.4 momentum sweet spot, supported by a 1.10x volume expansion. VectorBT backtest shows a solid 62.5% historical win rate, 1.61 profit factor, and positive expectancy, validating the EMA trend momentum setup.",
+      "entry_time": "2026-10-30 15:18:23",
+      "exit_time": null,
+      "is_paper_trade": 1,
+      "metadata_json": "{\"risk_reward_ratio\": 2.0, \"holding_period_days\": 5, \"key_risks\": \"Despite positive technicals, Mag-7 sector declines and recent insider selling activity pose mild sentiment headwinds that could test the stop loss if broader market volatility spikes.\", \"backtest_win_rate\": 0.625, \"backtest_expectancy\": 1012.43, \"raw_response\": {\"status\": \"success\", \"mode\": \"paper_trading\", \"orderId\": \"SIM-DHAN-20261030151823-AAPL\", \"message\": \"Order simulated under 1% account risk parameters.\"}}",
+      "initial_quantity": 79,
+      "stage": "STAGE_INITIAL",
+      "partial_exit_taken": 0,
+      "current_price": 351.2
+    }
+  ],
+  "daily_pnl": [
+    {
+      "date": "2026-10-30",
+      "starting_capital": null,
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 912.28,
+      "total_trades": 3,
+      "win_count": 0,
+      "loss_count": 0,
+      "updated_at": "2026-10-30T15:49:34.028152"
+    },
+    {
+      "date": "2026-10-29",
+      "starting_capital": null,
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_trades": 2,
+      "win_count": 0,
+      "loss_count": 0,
+      "updated_at": "2026-10-29T23:44:00.665978"
+    }
+  ],
+  "post_mortems": [
+    {
+      "id": 1,
+      "timestamp": "2026-10-29T22:15:06.817289",
+      "summary": "EOD Reflection Report (2026-10-29):\n- Total Historic Trades Logged: 0\n- Closed Trades: 0\n- Win Rate: 50.0%\n- Adjustments: Sample size < 5 trades; maintained baseline rules and verified risk integrity.",
+      "adjustments_made": "[\"Sample size < 5 trades; maintained baseline rules and verified risk integrity.\"]",
+      "win_rate": 0.5,
+      "total_trades_analyzed": 0
+    }
+  ],
+  "active_rules": {
+    "system_name": "Ampolin AI Trading Agent",
+    "version": "1.0.0",
+    "last_updated": "2026-10-29T22:15:06.817289",
+    "rules": {
+      "ema_fast": 20,
+      "ema_slow": 50,
+      "rsi_min": 48.0,
+      "rsi_max": 68.0,
+      "rsi_period": 14,
+      "atr_period": 14,
+      "atr_sl_multiplier": 1.5,
+      "tp_risk_multiplier": 2.0,
+      "min_win_rate": 0.45,
+      "min_expectancy": 0.0,
+      "max_account_risk_pct": 0.01,
+      "min_confidence_to_trade": 0.65,
+      "backtest_lookback_days": 90,
+      "preferred_timeframes": [
+        "1d",
+        "4h"
+      ],
+      "require_positive_expectancy": true
+    },
+    "learned_insights": [
+      "Initial baseline: EMA 20/50 breakout filtered by RSI 48-68 prevents entering at overbought peaks.",
+      "ATR 1.5x stop loss gives adequate room for Indian Equities swing volatility without getting prematurely stopped by noise.",
+      "CNC Delivery avoids intraday square-off margin pressure and allows capturing multi-day swing momentum."
+    ],
+    "adjustments_history": [
+      {
+        "timestamp": "2026-10-29T22:15:06.817289",
+        "adjustments": [
+          "Sample size < 5 trades; maintained baseline rules and verified risk integrity."
+        ],
+        "win_rate": 0.5
+      }
+    ]
+  }
+}

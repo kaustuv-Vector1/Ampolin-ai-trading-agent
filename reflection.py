@@ -21,6 +21,7 @@ from config import DB_PATH, ACTIVE_RULES_PATH
 from broker import OrderResult
 from ai_brain import TradeDecision
 from sandbox import BacktestResult
+from state_backup import StateBackupManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("AmpolinReflection")
@@ -29,7 +30,13 @@ logger = logging.getLogger("AmpolinReflection")
 class TradeLogger:
     def __init__(self, db_path: Path = DB_PATH):
         self.db_path = db_path
+        self.backup_mgr = StateBackupManager(db_path=self.db_path)
         self._init_db()
+        # Ensure fresh snapshot is synced
+        try:
+            self.backup_mgr.create_snapshot()
+        except Exception:
+            pass
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -88,26 +95,33 @@ class TradeLogger:
             cursor.execute("UPDATE trades SET current_price = 351.20, pnl = 180.91, pnl_percentage = 0.66 WHERE ticker = 'AAPL' AND (current_price IS NULL OR current_price = 0)")
             conn.commit()
 
-            # If fresh database (e.g. initial boot on Cloud Run), seed verified paper trades
+            # If fresh database (e.g. initial boot on Cloud Run), restore from snapshot or seed
             cursor.execute("SELECT COUNT(*) FROM trades")
             if cursor.fetchone()[0] == 0:
-                logger.info("Fresh database detected. Initializing with verified paper trades...")
-                initial_trades = [
-                    ("SIM-DHAN-20261029-WIPRO", "WIPRO.NS", "BUY", 190.10, 193.90, 205.42, 97, 97, 18439.70, 743.02, "SIMULATED_FILLED", "STAGE_PROFIT_LOCKED", 0, 0.78, "20/50 EMA breakout with +3.79% gain locked at +2.0% floor", 197.31, 699.37, 3.79),
-                    ("SIM-DHAN-20261029-DIVISLAB", "DIVISLAB.NS", "BUY", 9664.00, 9293.98, 10404.03, 2, 2, 19328.00, 740.04, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.75, "High-momentum pharma breakout with 1:2 R:R", 9680.00, 32.00, 0.17),
-                    ("SIM-DHAN-20261030-AAPL", "AAPL", "BUY", 348.91, 339.51, 367.71, 79, 79, 27563.89, 742.60, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.78, "Wall Street mega-cap momentum breakout verified by VectorBT 62.5% win rate", 351.20, 180.91, 0.66),
-                ]
-                now_str = datetime.now().isoformat()
-                for t in initial_trades:
-                    cursor.execute("""
-                        INSERT INTO trades (
-                            order_id, ticker, action, entry_price, stop_loss, take_profit,
-                            quantity, initial_quantity, capital_allocated, risk_amount,
-                            status, stage, partial_exit_taken, confidence, rationale,
-                            current_price, pnl, pnl_percentage, entry_time, is_paper_trade
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                    """, (*t, now_str))
-                conn.commit()
+                restored = False
+                try:
+                    restored = self.backup_mgr.restore_from_snapshot()
+                except Exception as e:
+                    logger.warning(f"Could not restore snapshot: {e}")
+
+                if not restored:
+                    logger.info("Fresh database detected. Initializing with verified paper trades...")
+                    initial_trades = [
+                        ("SIM-DHAN-20261029-WIPRO", "WIPRO.NS", "BUY", 190.10, 193.90, 205.42, 97, 97, 18439.70, 743.02, "SIMULATED_FILLED", "STAGE_PROFIT_LOCKED", 0, 0.78, "20/50 EMA breakout with +3.79% gain locked at +2.0% floor", 197.31, 699.37, 3.79),
+                        ("SIM-DHAN-20261029-DIVISLAB", "DIVISLAB.NS", "BUY", 9664.00, 9293.98, 10404.03, 2, 2, 19328.00, 740.04, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.75, "High-momentum pharma breakout with 1:2 R:R", 9680.00, 32.00, 0.17),
+                        ("SIM-DHAN-20261030-AAPL", "AAPL", "BUY", 348.91, 339.51, 367.71, 79, 79, 27563.89, 742.60, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.78, "Wall Street mega-cap momentum breakout verified by VectorBT 62.5% win rate", 351.20, 180.91, 0.66),
+                    ]
+                    now_str = datetime.now().isoformat()
+                    for t in initial_trades:
+                        cursor.execute("""
+                            INSERT INTO trades (
+                                order_id, ticker, action, entry_price, stop_loss, take_profit,
+                                quantity, initial_quantity, capital_allocated, risk_amount,
+                                status, stage, partial_exit_taken, confidence, rationale,
+                                current_price, pnl, pnl_percentage, entry_time, is_paper_trade
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        """, (*t, now_str))
+                    conn.commit()
 
             # Daily P&L Table
             cursor.execute("""
@@ -188,6 +202,10 @@ class TradeLogger:
             trade_id = cursor.lastrowid
             conn.commit()
             logger.info(f"Trade logged in SQLite [ID: {trade_id}] for {order.ticker}")
+            try:
+                self.backup_mgr.create_snapshot()
+            except Exception:
+                pass
             return trade_id
 
     def close_trade(self, order_id: str, exit_price: float, exit_time: Optional[str] = None) -> bool:
