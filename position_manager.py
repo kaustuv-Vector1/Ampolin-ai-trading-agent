@@ -201,18 +201,17 @@ class PositionManager:
                     shares_to_sell = max(1, int(quantity * STAGE2_PARTIAL_EXIT_RATIO))
                     remaining_shares = quantity - shares_to_sell
                     partial_pnl = round((curr_price - entry_price) * shares_to_sell, 2)
-
-                    # Update remaining shares and set trailing EMA stop
                     trailing_sl = max(entry_price, ema20 or entry_price)
-                    cursor.execute(
-                        """
-                        UPDATE trades
-                        SET quantity = ?, stop_loss = ?, stage = 'STAGE_PARTIAL_BOOKED', partial_exit_taken = 1
-                        WHERE id = ?
-                        """,
-                        (remaining_shares, trailing_sl, trade_id),
+
+                    # Atomically update DB, create closed partial trade record, and persist snapshot
+                    self.trade_logger.record_partial_exit(
+                        order_id=order_id,
+                        shares_sold=shares_to_sell,
+                        exit_price=curr_price,
+                        booked_pnl=partial_pnl,
+                        remaining_shares=remaining_shares,
+                        trailing_sl=trailing_sl,
                     )
-                    conn.commit()
                     logger.info(
                         f"-> [STAGE 2] 2.0R Target Hit for {ticker}! Sold {shares_to_sell} shares (50%) @ ₹{curr_price}. "
                         f"Booked P&L: ₹{partial_pnl}. Remaining: {remaining_shares} shares trailing 20 EMA (₹{trailing_sl})"
@@ -259,6 +258,12 @@ class PositionManager:
                         logger.info(f"-> [STAGE 3] Trailing SL for {ticker} ratcheted up to 20 EMA: ₹{ema20}")
 
         logger.info(f"Position management sweep complete. {len(actions_taken)} adjustments enacted.")
+        if actions_taken:
+            try:
+                self.trade_logger.calculate_daily_summary()
+                self.trade_logger.backup_mgr.create_snapshot()
+            except Exception:
+                pass
         return actions_taken
 
 

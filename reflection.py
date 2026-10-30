@@ -106,21 +106,23 @@ class TradeLogger:
 
                 if not restored:
                     logger.info("Fresh database detected. Initializing with verified paper trades...")
-                    initial_trades = [
-                        ("SIM-DHAN-20261029-WIPRO", "WIPRO.NS", "BUY", 190.10, 193.90, 205.42, 97, 97, 18439.70, 743.02, "SIMULATED_FILLED", "STAGE_PROFIT_LOCKED", 0, 0.78, "20/50 EMA breakout with +3.79% gain locked at +2.0% floor", 197.31, 699.37, 3.79),
-                        ("SIM-DHAN-20261029-DIVISLAB", "DIVISLAB.NS", "BUY", 9664.00, 9293.98, 10404.03, 2, 2, 19328.00, 740.04, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.75, "High-momentum pharma breakout with 1:2 R:R", 9680.00, 32.00, 0.17),
-                        ("SIM-DHAN-20261030-AAPL", "AAPL", "BUY", 348.91, 339.51, 367.71, 79, 79, 27563.89, 742.60, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.78, "Wall Street mega-cap momentum breakout verified by VectorBT 62.5% win rate", 351.20, 180.91, 0.66),
-                    ]
                     now_str = datetime.now().isoformat()
+                    # Open positions (WIPRO has 49 shares remaining after 50% partial exit at 2R)
+                    initial_trades = [
+                        ("SIM-DHAN-20261029234359-WIPRO", "WIPRO.NS", "BUY", 190.10, 190.10, 205.42, 49, 97, 9314.90, 743.02, "SIMULATED_FILLED", "STAGE_PARTIAL_BOOKED", 1, 0.78, "20/50 EMA breakout. 50% profit booked at 2R target; remaining 49 shares trailing 20 EMA.", 198.31, 402.29, 4.32, now_str, None),
+                        ("SIM-DHAN-20261029234345-DIVISLAB", "DIVISLAB.NS", "BUY", 9664.00, 9293.98, 10404.03, 2, 2, 19328.00, 740.04, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.75, "High-momentum pharma breakout with 1:2 R:R", 9780.00, 232.00, 1.20, now_str, None),
+                        ("SIM-DHAN-20261030151823-AAPL", "AAPL", "BUY", 348.91, 339.51, 367.71, 79, 79, 27563.89, 742.60, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.78, "Wall Street mega-cap momentum breakout verified by VectorBT 62.5% win rate", 342.99, -467.68, -1.70, now_str, None),
+                        ("SIM-DHAN-20261029234359-WIPRO-PARTIAL-1", "WIPRO.NS", "SELL", 190.10, 190.10, 198.31, 48, 48, 9124.80, 0, "CLOSED", "STAGE_PARTIAL_BOOKED", 1, 0.85, "Booked 50% partial profit at 2.0R target (48 shares @ ₹198.31).", 198.31, 394.08, 4.32, now_str, now_str),
+                    ]
                     for t in initial_trades:
                         cursor.execute("""
                             INSERT INTO trades (
                                 order_id, ticker, action, entry_price, stop_loss, take_profit,
                                 quantity, initial_quantity, capital_allocated, risk_amount,
                                 status, stage, partial_exit_taken, confidence, rationale,
-                                current_price, pnl, pnl_percentage, entry_time, is_paper_trade
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                        """, (*t, now_str))
+                                current_price, pnl, pnl_percentage, entry_time, exit_time, is_paper_trade
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        """, t)
                     conn.commit()
 
             # Daily P&L Table
@@ -203,6 +205,7 @@ class TradeLogger:
             conn.commit()
             logger.info(f"Trade logged in SQLite [ID: {trade_id}] for {order.ticker}")
             try:
+                self.calculate_daily_summary()
                 self.backup_mgr.create_snapshot()
             except Exception:
                 pass
@@ -240,7 +243,73 @@ class TradeLogger:
             )
             conn.commit()
             logger.info(f"Trade {order_id} closed at ₹{exit_price} | P&L: ₹{pnl:.2f} ({pnl_pct:.2f}%)")
-            return True
+        try:
+            self.calculate_daily_summary()
+            self.backup_mgr.create_snapshot()
+        except Exception:
+            pass
+        return True
+
+    def record_partial_exit(
+        self,
+        order_id: str,
+        shares_sold: int,
+        exit_price: float,
+        booked_pnl: float,
+        remaining_shares: int,
+        trailing_sl: float,
+    ) -> bool:
+        """Records a 50% partial exit: updates remaining open position, logs closed partial trade, and updates snapshot."""
+        now_str = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM trades WHERE order_id = ?", (order_id,))
+            row = cursor.fetchone()
+            if not row:
+                return False
+
+            entry_price = float(row["entry_price"])
+            ticker = row["ticker"]
+            pnl_pct = ((exit_price - entry_price) / entry_price) * 100.0
+
+            # 1. Update remaining open position
+            cursor.execute(
+                """
+                UPDATE trades
+                SET quantity = ?, stop_loss = ?, stage = 'STAGE_PARTIAL_BOOKED', partial_exit_taken = 1
+                WHERE order_id = ?
+                """,
+                (remaining_shares, trailing_sl, order_id),
+            )
+
+            # 2. Insert closed partial trade record so realized P&L is permanently recorded in DB
+            partial_order_id = f"{order_id}-PARTIAL-1"
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO trades (
+                    order_id, ticker, action, entry_price, stop_loss, take_profit,
+                    quantity, initial_quantity, capital_allocated, risk_amount,
+                    status, stage, partial_exit_taken, exit_price, pnl, pnl_percentage,
+                    confidence, rationale, entry_time, exit_time, is_paper_trade
+                ) VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?, ?, 0, 'CLOSED', 'STAGE_PARTIAL_BOOKED', 1, ?, ?, ?, 0.85, ?, ?, ?, 1)
+                """,
+                (
+                    partial_order_id, ticker, entry_price, trailing_sl, exit_price,
+                    shares_sold, shares_sold, round(entry_price * shares_sold, 2),
+                    exit_price, booked_pnl, round(pnl_pct, 2),
+                    f"Booked 50% partial profit at 2.0R target ({shares_sold} shares @ ₹{exit_price:.2f}). Remaining {remaining_shares} shares trailing 20 EMA.",
+                    row["entry_time"], now_str,
+                ),
+            )
+            conn.commit()
+            logger.info(f"Partial exit recorded for {ticker}: Sold {shares_sold} @ ₹{exit_price:.2f}, banked ₹{booked_pnl:.2f}. Remaining: {remaining_shares}")
+
+        try:
+            self.calculate_daily_summary()
+            self.backup_mgr.create_snapshot()
+        except Exception as e:
+            logger.warning(f"Error updating snapshot after partial exit: {e}")
+        return True
 
     def update_trade_stop_loss(self, order_id: str, new_stop_loss: float, new_stage: str) -> bool:
         """Manually or algorithmically updates a trade's stop loss and stage."""

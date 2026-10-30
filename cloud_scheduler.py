@@ -58,10 +58,14 @@ class CloudTradingDaemon:
     def is_us_market_open(self) -> bool:
         """Returns True if current time is within Wall Street hours (19:30 - 01:30 IST)."""
         now = datetime.now(IST)
-        if now.weekday() < 5 and (now.hour > 19 or (now.hour == 19 and now.minute >= 30) or now.hour >= 20):
-            return True
-        if now.weekday() <= 5 and now.hour in (0, 1):
-            return True
+        # Evening session: Mon-Fri 19:30 - 23:59 IST
+        if 0 <= now.weekday() <= 4:
+            if now.hour > 19 or (now.hour == 19 and now.minute >= 30):
+                return True
+        # Post-midnight session: Tue-Sat 00:00 - 01:30 IST
+        if 1 <= now.weekday() <= 5:
+            if now.hour == 0 or (now.hour == 1 and now.minute <= 30):
+                return True
         return False
 
     def periodic_market_check(self):
@@ -93,7 +97,7 @@ class CloudTradingDaemon:
         )
 
     def scan_cycle(self, session_label: str):
-        if not self.is_market_day():
+        if not self.is_nse_market_open():
             return
 
         logger.info(f"--- [{session_label}] EXECUTING NIFTY 50 AUTONOMOUS SCAN ---")
@@ -101,7 +105,7 @@ class CloudTradingDaemon:
         logger.info(f"Scan cycle complete: {result.get('status')} | Trades: {len(result.get('executed_trades', []))}")
 
     def scan_us_cycle(self, session_label: str):
-        if not self.is_market_day():
+        if not self.is_us_market_open():
             return
 
         logger.info(f"--- [{session_label}] EXECUTING WALL STREET (US) AUTONOMOUS SCAN ---")

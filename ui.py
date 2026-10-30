@@ -34,6 +34,8 @@ from market_regime import MarketRegimeAnalyzer
 from position_manager import PositionManager
 from main import AmpolinPipeline
 from llm_client import MultiProviderLLM
+from prompt_context import build_dynamic_system_prompt
+import yfinance as yf
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("AmpolinUI")
@@ -132,51 +134,12 @@ def in_app_chat(req: ChatRequest):
     available_cash = round(starting_capital - deployed_margin + summary.get("realized_pnl", 0.0), 2)
     portfolio_equity = round(starting_capital + summary.get("total_pnl", 0.0), 2)
 
-    system_prompt = f"""
-You are Ampolin AI, an institutional-grade quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
-
-Current Portfolio & Funds Context:
-- Total Paper Account Equity: ₹{portfolio_equity:,.2f}
-- Starting Paper Capital: ₹{starting_capital:,.2f}
-- Available Free Cash: ₹{available_cash:,.2f}
-- Invested Capital Deployed: ₹{deployed_margin:,.2f}
-- Active Open Positions:
-  • WIPRO.NS (NSE 🇮🇳): 97 shares @ ₹190.10, Current ₹197.31, Invested ₹18,439.70, Floating Gain +₹699.37 (+3.79%), Stop Loss ₹193.90 (+2.0% profit floor locked!)
-  • AAPL (Wall Street 🇺🇸): 79 shares @ $348.91, Current $351.20, Invested $27,563.89, Floating Gain +$180.91 (+0.66%), Stop Loss $339.51
-  • DIVISLAB.NS (NSE 🇮🇳): 2 shares @ ₹9,664.00, Current ₹9,680.00, Invested ₹19,328.00, Floating Gain +₹32.00 (+0.17%), Stop Loss ₹9,293.98
-- Floating (Unrealized) P&L: ₹{summary.get('unrealized_pnl', 0.0):,.2f}
-- Realized P&L Banked: ₹{summary.get('realized_pnl', 0.0):,.2f}
-- India VIX Volatility: {regime.india_vix:.2f} ({regime.vix_regime})
-- Market Breadth: {regime.market_breadth_pct:.1f}% stocks > 50 EMA ({regime.breadth_regime})
-- Trading Rules: 1% risk budgeting, 20/50 EMA breakouts, RSI 48-68 momentum, VectorBT statistical edge (Win Rate >= 52%, Profit Factor >= 1.50), 1R breakeven, 3.5% profit ratchet (locks +2.0%), and 20 EMA trailing.
-
-Market Schedule & Trading Hours:
-- Indian Equities (NSE): Closed at 15:30 IST today.
-- Wall Street (US Stocks - AAPL): OPENS TONIGHT at 19:30 IST (7:30 PM IST) and trades until 01:30 IST. AAPL will trade actively tonight!
-
-RECENT SYSTEM ALERTS SENT TO USER:
-{recent_alerts_str}
-
-CONVERSATION & GREETING RULES:
-1. {greeting_rule}
-2. TRANSPARENCY ON "ARE THESE REAL?": If Kaustuv asks "WAIT IS THIS REAL?", "Is that real?", "Are these real trades?", or asks about any recent trade alert:
-   - Answer directly and honestly: Explain that these are live institutional PAPER TRADES executing in real-time simulation (dry-run mode). Live market data from NSE & Wall Street is 100% real, while execution is simulated without risking real money from his account.
-   - Explain the exact trade details (e.g. WIPRO.NS, AAPL, etc.), current prices, and explain the mathematical rule that triggered (such as the +3.5% Profit Ratchet raising the stop loss to ₹193.9 to lock in a guaranteed +2.0% profit floor).
-   - NEVER contradict recent alerts or claim to be sitting on 100% cash when alerts were dispatched or paper trades are active!
-3. MARKET HOURS & FUNDS AWARENESS: If Kaustuv asks whether market is closed or if these are US stocks, confirm NSE closed at 15:30 IST, and AAPL is a US tech leader that opens tonight at 19:30 IST. If asked about funds, cash, or invested capital, give the exact figures above immediately.
-4. CAPITAL PROTECTION & ANTI-DUMP GUARANTEES: If Kaustuv asks about protecting capital, or whether the AI can dump all his money into a stock:
-   - Reassure him emphatically: The AI is mathematically and architecturally BLOCKED from ever dumping all capital into one stock.
-   - Detail the 5 hard capital security circuit breakers:
-     1. Max 20% Per Stock: Absolute hard cap. The system cannot allocate more than 20% of account equity to any single ticker.
-     2. Single-Share Veto: If 1 single share costs > 20% of account, the trade is rejected outright.
-     3. 15% Mandatory Cash Reserve: A 15% liquid buffer is untouchable, so the AI never runs out of cash.
-     4. Max 4 Open Positions: Forces strict portfolio diversification across non-correlated names.
-     5. 3% Daily Loss Circuit Breaker: Trading shuts down automatically for the day if realized daily losses hit 3%.
-     6. Zero Leverage (CNC Delivery): No margin, no short borrowing, zero liquidation risk.
-5. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Reference earlier stocks, rules, or questions seamlessly without asking him to repeat himself.
-6. PROACTIVE ENGAGEMENT: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, review trailing stops, or inspect a specific chart).
-7. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it scannable on mobile.
-"""
+    system_prompt = build_dynamic_system_prompt(
+        trade_logger=trade_logger,
+        regime_analyzer=regime_analyzer,
+        greeting_rule=greeting_rule,
+        recent_alerts_str=recent_alerts_str,
+    )
     reply = llm_brain.generate_chat_response(user_prompt=user_msg, system_prompt=system_prompt, history=req.history)
     if not reply:
         reply = "I'm currently updating live feeds. Please ask again in a few seconds!"
@@ -343,6 +306,56 @@ def get_trades(limit: int = 50):
     trades = trade_logger.get_all_trades(limit=limit)
     summary = trade_logger.calculate_daily_summary()
     return {"trades": trades, "summary": summary}
+
+
+@app.get("/api/chart-data")
+def get_chart_data(ticker: str = Query(..., description="Ticker symbol")):
+    """Returns historical daily OHLCV candlestick data for TradingView Lightweight Charts."""
+    try:
+        clean_ticker = ticker.strip()
+        alt_ticker = clean_ticker
+        if clean_ticker.upper() in ("NIFTY", "NIFTY 50", "NIFTY50", "NSE:NIFTY"):
+            alt_ticker = "^NSEI"
+        elif clean_ticker.upper() in ("INDIA VIX", "INDIAVIX", "VIX", "NSE:INDIAVIX"):
+            alt_ticker = "^INDIAVIX"
+        elif clean_ticker.startswith("NSE:"):
+            alt_ticker = f"{clean_ticker.replace('NSE:', '')}.NS"
+        elif clean_ticker.startswith("NASDAQ:"):
+            alt_ticker = clean_ticker.replace("NASDAQ:", "")
+
+        df = yf.download(alt_ticker, period="6mo", interval="1d", progress=False, multi_level_index=False)
+        if df.empty or len(df) < 3:
+            df = yf.download(clean_ticker, period="6mo", interval="1d", progress=False, multi_level_index=False)
+
+        if df.empty:
+            return JSONResponse({"status": "ERROR", "message": f"No data found for {ticker}"}, status_code=404)
+
+        candles = []
+        for idx, row in df.iterrows():
+            date_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
+            open_val = float(row.get("Open") or row.get("open") or 0.0)
+            high_val = float(row.get("High") or row.get("high") or 0.0)
+            low_val = float(row.get("Low") or row.get("low") or 0.0)
+            close_val = float(row.get("Close") or row.get("close") or 0.0)
+            vol_val = float(row.get("Volume") or row.get("volume") or 0.0)
+            if open_val > 0 and high_val > 0 and low_val > 0 and close_val > 0:
+                candles.append({
+                    "time": date_str,
+                    "open": round(open_val, 2),
+                    "high": round(high_val, 2),
+                    "low": round(low_val, 2),
+                    "close": round(close_val, 2),
+                    "volume": round(vol_val, 0)
+                })
+
+        return {
+            "status": "SUCCESS",
+            "ticker": clean_ticker,
+            "candles": candles
+        }
+    except Exception as e:
+        logger.error(f"Error fetching chart data for {ticker}: {e}")
+        return JSONResponse({"status": "ERROR", "message": str(e)}, status_code=500)
 
 
 @app.post("/api/scan")

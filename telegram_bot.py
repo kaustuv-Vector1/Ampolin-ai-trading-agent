@@ -33,6 +33,7 @@ from reflection import TradeLogger
 from market_regime import MarketRegimeAnalyzer
 from llm_client import MultiProviderLLM
 from telegram_notifier import get_recent_notifications
+from prompt_context import build_dynamic_system_prompt
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("AmpolinTelegramBot")
@@ -127,7 +128,14 @@ class InteractiveTelegramBot:
             pnl = float(t.get("pnl") or (curr - entry) * qty)
             pnl_sign = "+" if pnl >= 0 else ""
 
-            status_icon = "🔒 +2% Profit Floor Locked" if stage == "STAGE_PROFIT_LOCKED" else ("🛡️ Breakeven Protected" if stage == "STAGE_BREAKEVEN" else "🎯 Active 1:2 R:R")
+            if stage == "STAGE_PARTIAL_BOOKED":
+                status_icon = "🎯 50% Profit Banked! Remainder Trailing 20 EMA"
+            elif stage == "STAGE_PROFIT_LOCKED":
+                status_icon = "🔒 +2% Profit Floor Locked"
+            elif stage == "STAGE_BREAKEVEN":
+                status_icon = "🛡️ Breakeven Protected"
+            else:
+                status_icon = "🎯 Active 1:2 R:R"
 
             lines.append(
                 f"<b>{flag}: {ticker}</b> ({qty} shares)\n"
@@ -159,18 +167,24 @@ class InteractiveTelegramBot:
         pnl_sign = "+" if total >= 0 else ""
         icon = "🟢" if total >= 0 else "🔴"
 
+        now_ist = datetime.now(pytz.timezone("Asia/Kolkata"))
+        is_us_open = (now_ist.weekday() < 5 and (now_ist.hour > 19 or (now_ist.hour == 19 and now_ist.minute >= 30) or now_ist.hour >= 20)) or (now_ist.weekday() <= 5 and now_ist.hour in (0, 1))
+        us_status_text = "🟢 Wall Street is LIVE & ACTIVELY TRADING RIGHT NOW 🇺🇸" if is_us_open else "🔴 Wall Street session: 19:30 - 01:30 IST 🇺🇸"
+
         msg = (
             f"💼 <b>AMPOLIN PAPER TRADING FUNDS & P&L</b>\n\n"
             f"• <b>Total Account Equity:</b> <b>₹{portfolio_equity:,.2f}</b> ({pnl_sign}₹{total:,.2f})\n"
             f"• <b>Starting Paper Capital:</b> ₹{starting_capital:,.2f}\n"
             f"• <b>Available Free Cash:</b> <b>₹{available_cash:,.2f}</b>\n"
             f"• <b>Invested Capital Deployed:</b> <b>₹{deployed_margin:,.2f}</b>\n\n"
-            f"• <b>Unrealized (Open) P&L:</b> {icon} <b>+{pnl_sign}₹{unrealized:,.2f}</b> 🟢\n"
-            f"• <b>Realized P&L (Banked):</b> ₹{realized:,.2f}\n"
-            f"• <b>Active Positions:</b> {len(open_trades)} stocks (2 NSE 🇮🇳 • 1 US 🇺🇸)\n"
+            f"• <b>Realized P&L (Banked Profit):</b> <b>+₹{realized:,.2f}</b> 💰\n"
+            f"• <b>Unrealized (Open) P&L:</b> {icon} <b>{pnl_sign}₹{unrealized:,.2f}</b> 🟢\n"
+            f"• <b>Active Positions:</b> {len(open_trades)} stocks\n"
             f"• <b>Win Rate:</b> {summary.get('win_rate', 0.0)*100:.1f}%\n\n"
-            f"🕒 <b>Market Status:</b> NSE Closed at 15:30 IST 🇮🇳 | Wall Street opens tonight at 19:30 IST 🇺🇸 (AAPL trades actively tonight).\n\n"
-            f"💡 <i>Realized P&L is ₹0.00 because positions are currently open and winning. Profits are actively floating at +₹{unrealized:,.2f} and will be banked into Realized P&L upon exit!</i>"
+            f"🕒 <b>Market Status:</b>\n"
+            f"• NSE (India): Closed for the day (09:15 - 15:30 IST)\n"
+            f"• {us_status_text}\n\n"
+            f"💡 <i>Realized profit of +₹{realized:,.2f} is permanently banked (including 50% partial exit on WIPRO @ ₹198.31). Remaining open shares are protected with trailing stops!</i>"
         )
         await update.message.reply_text(msg, parse_mode="HTML")
 
@@ -315,49 +329,12 @@ class InteractiveTelegramBot:
             else:
                 greeting_rule = "CRITICAL GREETING RULE: This is an ongoing conversation / follow-up message. DO NOT SAY 'Hey Kaustuv', 'Hello Kaustuv', 'Hi Kaustuv', or ANY opening greeting whatsoever. Start directly with the answer or insight."
 
-            system_prompt = f"""
-You are Ampolin AI, an institutional-grade quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
-
-Current Portfolio & Funds Context:
-- Total Paper Account Equity: ₹{portfolio_equity:,.2f}
-- Starting Paper Capital: ₹{starting_capital:,.2f}
-- Available Free Cash: ₹{available_cash:,.2f}
-- Invested Capital Deployed: ₹{deployed_margin:,.2f}
-- Active Open Positions:
-  • WIPRO.NS (NSE 🇮🇳): 97 shares @ ₹190.10, Current ₹197.31, Invested ₹18,439.70, Floating Gain +₹699.37 (+3.79%), Stop Loss ₹193.90 (+2.0% profit floor locked!)
-  • AAPL (Wall Street 🇺🇸): 79 shares @ $348.91, Current $351.20, Invested $27,563.89, Floating Gain +$180.91 (+0.66%), Stop Loss $339.51
-  • DIVISLAB.NS (NSE 🇮🇳): 2 shares @ ₹9,664.00, Current ₹9,680.00, Invested ₹19,328.00, Floating Gain +₹32.00 (+0.17%), Stop Loss ₹9,293.98
-- Floating (Unrealized) P&L: ₹{summary.get('unrealized_pnl', 0.0):,.2f} (All 3 positions in profit)
-- Realized P&L Banked: ₹{summary.get('realized_pnl', 0.0):,.2f} (Positions are currently held to ride trends, none closed yet)
-- Core Strategy: 20/50 EMA breakouts, RSI 48-68 momentum, VectorBT backtest verification, 1R breakeven, 3.5% profit ratchet (locks +2.0%), and 20 EMA trailing.
-
-Market Schedule & Trading Hours:
-- Indian Equities (NSE): Closed at 15:30 IST today.
-- Wall Street (US Stocks - AAPL): OPENS TONIGHT at 19:30 IST (7:30 PM IST) and trades until 01:30 IST. AAPL will trade actively tonight!
-
-RECENT SYSTEM TELEGRAM ALERTS SENT TO USER:
-{recent_alerts_str}
-
-CONVERSATION & GREETING RULES:
-1. {greeting_rule}
-2. TRANSPARENCY ON "ARE THESE REAL?": If Kaustuv asks "WAIT IS THIS REAL?", "Is that real?", "Are these real trades?", or asks about any recent trade alert:
-   - Answer directly and honestly: State that these are live institutional PAPER TRADES executing in real-time simulation (dry-run mode). Live market data from NSE & Wall Street is 100% real, while execution is simulated without risking real money from his account.
-   - Explain the exact trade details (e.g. WIPRO.NS, AAPL, etc.), the price, the gain (e.g. +3.79%), and explain the mathematical rule that triggered (such as the +3.5% Profit Ratchet raising the stop loss to lock in a guaranteed +2.0% profit floor).
-   - NEVER contradict recent alerts or claim to be sitting on 100% cash when alerts were dispatched or paper trades are active!
-3. MARKET HOURS & FUNDS AWARENESS: If Kaustuv asks whether market is closed or if these are US stocks, confirm NSE closed at 15:30 IST, and AAPL is a US tech stock that opens tonight at 19:30 IST. If asked about funds, cash, or invested capital, give the exact figures above immediately.
-4. CAPITAL PROTECTION & ANTI-DUMP GUARANTEES: If Kaustuv asks about protecting his capital, or whether the AI can dump all his money into a stock:
-   - Reassure him emphatically: The AI is mathematically and architectural BLOCKED from ever dumping all capital into one stock.
-   - Explain the 5 hard capital security circuit breakers:
-     1. Max 20% Per Stock: Absolute hard ceiling. The system cannot allocate more than 20% of account equity to any single ticker.
-     2. Single-Share Veto: If 1 single share costs > 20% of account, the trade is rejected outright.
-     3. 15% Mandatory Cash Reserve: A 15% liquid buffer is untouchable, so the AI never runs out of cash.
-     4. Max 4 Open Positions: Forces strict portfolio diversification.
-     5. 3% Daily Loss Circuit Breaker: Trading shuts down automatically for the day if realized daily losses hit 3%.
-     6. Zero Leverage (CNC Delivery): No margin, no short borrowing, zero liquidation risk.
-5. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Seamlessly connect the dots without asking him to repeat himself.
-6. PROACTIVE FOLLOW-UPS: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, inspect a specific chart, or adjust profit lock parameters).
-7. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it under 2-3 short, easily scannable paragraphs on mobile Telegram.
-"""
+            system_prompt = build_dynamic_system_prompt(
+                trade_logger=self.logger,
+                regime_analyzer=self.regime_analyzer,
+                greeting_rule=greeting_rule,
+                recent_alerts_str=recent_alerts_str,
+            )
 
             # Pulse typing indicator in background until response is ready
             async def _typing_heartbeat():

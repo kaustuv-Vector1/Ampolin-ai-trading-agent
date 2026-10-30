@@ -266,7 +266,8 @@ class AmpolinPipeline:
 
         # Compute Daily Summary
         daily_summary = self.trade_logger.calculate_daily_summary()
-        self.notifier.notify_daily_pnl(daily_summary)
+        if executed_records:
+            self.notifier.notify_daily_pnl(daily_summary)
 
         return {
             "status": "SUCCESS",
