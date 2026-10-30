@@ -9,6 +9,7 @@ Allows the user to chat directly with Ampolin AI on Telegram:
 import asyncio
 import logging
 import os
+import re
 import sys
 import threading
 from typing import Optional
@@ -31,6 +32,7 @@ from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GEMINI_API_KEY, GEMINI_
 from reflection import TradeLogger
 from market_regime import MarketRegimeAnalyzer
 from llm_client import MultiProviderLLM
+from telegram_notifier import get_recent_notifications
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("AmpolinTelegramBot")
@@ -212,26 +214,41 @@ class InteractiveTelegramBot:
         positions_str = ", ".join([f"{t['ticker']} (entry: {t['entry_price']}, stage: {t.get('stage','INITIAL')})" for t in open_trades]) or "None (100% Cash)"
         summary = self.logger.calculate_daily_summary()
 
+        chat_history = self.chat_memories[chat_id]
+        is_first_turn = len(chat_history) == 0
+
+        recent_alerts = get_recent_notifications()
+        recent_alerts_str = "\n".join([f"• {a}" for a in recent_alerts[-3:]]) if recent_alerts else "No alerts sent recently."
+
+        if is_first_turn:
+            greeting_rule = "GREETING RULE: Since this is the FIRST message of the conversation, you may start with a brief, friendly greeting like 'Hey Kaustuv.' followed immediately by the answer."
+        else:
+            greeting_rule = "CRITICAL GREETING RULE: This is an ongoing conversation / follow-up message. DO NOT SAY 'Hey Kaustuv', 'Hello Kaustuv', 'Hi Kaustuv', or ANY opening greeting whatsoever. Start directly with the answer or insight."
+
         system_prompt = f"""
 You are Ampolin AI, an institutional-grade quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
 
 Current Portfolio & System Context:
 - Active Open Positions: {positions_str}
-- Realized P&L Today: ₹{summary.get('realized_pnl', 0.0):,.2f}
+- Floating (Unrealized) P&L: ₹{summary.get('unrealized_pnl', 0.0):,.2f}
+- Realized P&L Banked: ₹{summary.get('realized_pnl', 0.0):,.2f}
+- Total Portfolio P&L: ₹{summary.get('total_pnl', 0.0):,.2f}
 - Core Strategy: 20/50 EMA breakouts, RSI 48-68 momentum, VectorBT backtest verification, 1R breakeven, 3.5% profit ratchet (locks +2.0%), and 20 EMA trailing.
 - Risk Budget: Hard 0.75%-1.0% max account risk per trade. Zero leverage (Cash Delivery only).
 
-CONVERSATION & TONE RULES:
-1. NEVER start messages by repeatedly greeting "Hey Kaustuv" or "Hello Kaustuv". Dive straight into the core answer or insight like a sharp, professional hedge-fund partner.
-2. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. If Kaustuv asks about a previously mentioned stock or idea, seamlessly connect the dots without asking him to repeat himself.
-3. PROACTIVE FOLLOW-UPS: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, inspect a specific chart, or adjust profit lock parameters).
-4. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it under 2-3 short, easily scannable paragraphs on mobile Telegram.
+RECENT SYSTEM TELEGRAM ALERTS SENT TO USER:
+{recent_alerts_str}
+
+CONVERSATION & GREETING RULES:
+1. {greeting_rule}
+2. TRANSPARENCY ON "ARE THESE REAL?": If Kaustuv asks "WAIT IS THIS REAL?", "Is that real?", "Are these real trades?", or asks about any recent trade alert:
+   - Answer directly and honestly: State that these are live institutional PAPER TRADES executing in real-time simulation (dry-run mode). Live market data from NSE & Wall Street is 100% real, while execution is simulated without risking real money from his account.
+   - Explain the exact trade details (e.g. WIPRO.NS, AAPL, etc.), the price, the gain (e.g. +3.79%), and explain the mathematical rule that triggered (such as the +3.5% Profit Ratchet raising the stop loss to lock in a guaranteed +2.0% profit floor).
+   - NEVER contradict recent alerts or claim to be sitting on 100% cash when alerts were dispatched or paper trades are active!
+3. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Seamlessly connect the dots without asking him to repeat himself.
+4. PROACTIVE FOLLOW-UPS: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, inspect a specific chart, or adjust profit lock parameters).
+5. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it under 2-3 short, easily scannable paragraphs on mobile Telegram.
 """
-
-        if chat_id not in self.chat_memories:
-            self.chat_memories[chat_id] = []
-
-        chat_history = self.chat_memories[chat_id]
 
         try:
             response_text = self.llm.generate_chat_response(
@@ -241,6 +258,11 @@ CONVERSATION & TONE RULES:
             )
 
             if response_text:
+                if not is_first_turn:
+                    # Strip any greeting that leaked through
+                    response_text = re.sub(r'^(Hey|Hello|Hi)\s+Kaustuv[\.,!:\s]*\n*', '', response_text, flags=re.IGNORECASE).strip()
+                    response_text = re.sub(r'^\*{1,2}(Hey|Hello|Hi)\s+Kaustuv[\.,!:\s]*\*{1,2}\n*', '', response_text, flags=re.IGNORECASE).strip()
+
                 # Update memory
                 chat_history.append({"role": "user", "content": user_text})
                 chat_history.append({"role": "assistant", "content": response_text})

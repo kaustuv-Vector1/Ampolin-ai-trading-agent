@@ -7,6 +7,7 @@ Gemini AI Brain decision inspection, DhanHQ trade execution, and SQLite portfoli
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -28,7 +29,7 @@ from sandbox import VectorBTSandbox
 from ai_brain import GeminiBrain
 from broker import DhanBroker
 from reflection import TradeLogger, EODReflection
-from telegram_notifier import TelegramNotifier
+from telegram_notifier import TelegramNotifier, get_recent_notifications
 from market_regime import MarketRegimeAnalyzer
 from position_manager import PositionManager
 from main import AmpolinPipeline
@@ -117,25 +118,47 @@ def in_app_chat(req: ChatRequest):
     summary = trade_logger.calculate_daily_summary()
     regime = regime_analyzer.analyze_regime()
 
+    recent_alerts = get_recent_notifications()
+    recent_alerts_str = "\n".join([f"• {a}" for a in recent_alerts[-3:]]) if recent_alerts else "No alerts sent recently."
+
+    is_first_turn = not req.history or len(req.history) == 0
+    if is_first_turn:
+        greeting_rule = "GREETING RULE: Since this is the FIRST message of the session, you may start with a brief, friendly greeting like 'Hey Kaustuv.' followed immediately by the answer."
+    else:
+        greeting_rule = "CRITICAL GREETING RULE: This is an ongoing conversation / follow-up message. DO NOT SAY 'Hey Kaustuv', 'Hello Kaustuv', 'Hi Kaustuv', or ANY opening greeting whatsoever. Start directly with the answer or insight."
+
     system_prompt = f"""
 You are Ampolin AI, an institutional-grade quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
 
 Current System Context:
 - Active Open Positions: {positions_str}
-- Today's Realized P&L: ₹{summary.get('realized_pnl', 0.0):,.2f}
+- Floating (Unrealized) P&L: ₹{summary.get('unrealized_pnl', 0.0):,.2f}
+- Realized P&L Banked: ₹{summary.get('realized_pnl', 0.0):,.2f}
+- Total Portfolio P&L: ₹{summary.get('total_pnl', 0.0):,.2f}
 - India VIX Volatility: {regime.india_vix:.2f} ({regime.vix_regime})
 - Market Breadth: {regime.market_breadth_pct:.1f}% stocks > 50 EMA ({regime.breadth_regime})
 - Trading Rules: 1% risk budgeting, 20/50 EMA breakouts, RSI 48-68 momentum, VectorBT statistical edge (Win Rate >= 52%, Profit Factor >= 1.50), 1R breakeven, 3.5% profit ratchet (locks +2.0%), and 20 EMA trailing.
 
-CONVERSATION & TONE RULES:
-1. NEVER start messages by repeatedly greeting "Hey Kaustuv" or "Hello Kaustuv". Dive straight into the core answer or insight like a sharp, professional hedge-fund partner.
-2. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Reference earlier stocks, rules, or questions seamlessly.
-3. PROACTIVE ENGAGEMENT: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, review trailing stops, or inspect a specific chart).
-4. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it scannable on mobile.
+RECENT SYSTEM ALERTS SENT TO USER:
+{recent_alerts_str}
+
+CONVERSATION & GREETING RULES:
+1. {greeting_rule}
+2. TRANSPARENCY ON "ARE THESE REAL?": If Kaustuv asks "WAIT IS THIS REAL?", "Is that real?", "Are these real trades?", or asks about any recent trade alert:
+   - Answer directly and honestly: Explain that these are live institutional PAPER TRADES executing in real-time simulation (dry-run mode). Live market data from NSE & Wall Street is 100% real, while execution is simulated without risking real money from his account.
+   - Explain the exact trade details (e.g. WIPRO.NS, AAPL, etc.), current prices, and explain the mathematical rule that triggered (such as the +3.5% Profit Ratchet raising the stop loss to ₹193.9 to lock in a guaranteed +2.0% profit floor).
+   - NEVER contradict recent alerts or claim to be sitting on 100% cash when alerts were dispatched or paper trades are active!
+3. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Reference earlier stocks, rules, or questions seamlessly without asking him to repeat himself.
+4. PROACTIVE ENGAGEMENT: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, review trailing stops, or inspect a specific chart).
+5. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it scannable on mobile.
 """
     reply = llm_brain.generate_chat_response(user_prompt=user_msg, system_prompt=system_prompt, history=req.history)
     if not reply:
         reply = "I'm currently updating live feeds. Please ask again in a few seconds!"
+    elif not is_first_turn:
+        reply = re.sub(r'^(Hey|Hello|Hi)\s+Kaustuv[\.,!:\s]*\n*', '', reply, flags=re.IGNORECASE).strip()
+        reply = re.sub(r'^\*{1,2}(Hey|Hello|Hi)\s+Kaustuv[\.,!:\s]*\*{1,2}\n*', '', reply, flags=re.IGNORECASE).strip()
+
     return {"reply": reply}
 
 
@@ -149,8 +172,10 @@ def get_system_status():
         "system_name": "Ampolin AI Trading Agent",
         "open_positions": len(open_trades),
         "daily_pnl": summary.get("realized_pnl", 0.0),
+        "unrealized_pnl": summary.get("unrealized_pnl", 0.0),
+        "total_pnl": summary.get("total_pnl", 0.0),
         "win_rate": summary.get("win_rate", 0.0),
-        "broker_mode": "Paper Trading (Dry-Run)" if broker.dry_run or not broker.dhan else "DhanHQ Live",
+        "broker_mode": "Paper Trading (Simulation)" if broker.dry_run or not broker.dhan else "DhanHQ Live",
         "ai_model": brain.model_name,
         "nifty_50_count": len(NIFTY_50_TICKERS),
         "regime": regime.to_dict(),
@@ -299,11 +324,11 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
   <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-5 sm:pt-6 grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3.5">
     <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
       <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
-        <span>Daily Realized P&amp;L</span>
+        <span>Portfolio P&amp;L (Floating)</span>
         <i class="fa-solid fa-chart-line text-zinc-600"></i>
       </div>
       <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-pnl">₹0.00</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-600 mt-1">Cash Delivery Positions</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-pnl-breakdown">Floating: ₹0.00 | Realized: ₹0.00</div>
     </div>
 
     <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
@@ -427,15 +452,16 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
                 <th class="py-2 px-3">Action</th>
                 <th class="py-2 px-3">Qty</th>
                 <th class="py-2 px-3">Entry</th>
+                <th class="py-2 px-3">Live Price</th>
                 <th class="py-2 px-3">Stop Loss</th>
                 <th class="py-2 px-3">Target</th>
-                <th class="py-2 px-3">Risk</th>
-                <th class="py-2 px-3">Status</th>
+                <th class="py-2 px-3">P&amp;L (Gain)</th>
+                <th class="py-2 px-3">Stage / Status</th>
               </tr>
             </thead>
             <tbody id="trades-tbody" class="divide-y divide-zinc-850">
               <tr>
-                <td colspan="8" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td>
+                <td colspan="9" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td>
               </tr>
             </tbody>
           </table>
@@ -567,9 +593,24 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       try {
         const res = await fetch('/api/status');
         const data = await res.json();
-        const pnl = data.daily_pnl || 0.0;
-        const pnlSign = pnl >= 0 ? '+' : '';
-        document.getElementById('metric-pnl').innerText = pnlSign + '₹' + pnl.toFixed(2);
+        const realized = data.daily_pnl || 0.0;
+        const unrealized = data.unrealized_pnl || 0.0;
+        const total = data.total_pnl !== undefined ? data.total_pnl : (realized + unrealized);
+        const pnlSign = total >= 0 ? '+' : '';
+        const uSign = unrealized >= 0 ? '+' : '';
+        const rSign = realized >= 0 ? '+' : '';
+
+        const pnlEl = document.getElementById('metric-pnl');
+        pnlEl.innerText = pnlSign + '₹' + total.toFixed(2);
+        if (total > 0) {
+          pnlEl.className = 'text-xl sm:text-2xl font-bold text-emerald-400 mono';
+        } else if (total < 0) {
+          pnlEl.className = 'text-xl sm:text-2xl font-bold text-rose-400 mono';
+        } else {
+          pnlEl.className = 'text-xl sm:text-2xl font-bold text-white mono';
+        }
+        document.getElementById('metric-pnl-breakdown').innerText = `Floating: ${uSign}₹${unrealized.toFixed(2)} | Realized: ${rSign}₹${realized.toFixed(2)}`;
+
         document.getElementById('metric-winrate').innerText = (data.win_rate * 100).toFixed(1) + '%';
         document.getElementById('metric-open-trades').innerText = data.open_positions;
         document.getElementById('badge-brain').innerText = data.ai_model;
@@ -623,22 +664,40 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         const data = await res.json();
         const tbody = document.getElementById('trades-tbody');
         if (!data.trades || data.trades.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td></tr>';
           return;
         }
 
         tbody.innerHTML = data.trades.map(t => {
           const sym = t.ticker.endsWith('.NS') ? '₹' : '$';
+          const entry = parseFloat(t.entry_price || 0);
+          const live = parseFloat(t.current_price || entry);
+          const qty = parseInt(t.quantity || 1);
+          const pnlVal = t.pnl !== null && t.pnl !== undefined ? parseFloat(t.pnl) : (live - entry) * qty;
+          const pnlPct = t.pnl_percentage !== null && t.pnl_percentage !== undefined ? parseFloat(t.pnl_percentage) : ((live - entry) / (entry || 1) * 100);
+          const pnlSign = pnlVal >= 0 ? '+' : '';
+          const pnlColor = pnlVal > 0 ? 'text-emerald-400 font-semibold' : (pnlVal < 0 ? 'text-rose-400 font-semibold' : 'text-zinc-400');
+
+          let stageBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-800 bg-zinc-900 text-zinc-300">${t.status}</span>`;
+          if (t.stage === 'STAGE_PROFIT_LOCKED') {
+            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-emerald-800/80 bg-emerald-950/60 text-emerald-300 font-medium">🔒 +2% LOCKED</span>';
+          } else if (t.stage === 'STAGE_BREAKEVEN') {
+            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-blue-800/80 bg-blue-950/60 text-blue-300 font-medium">🛡️ BREAKEVEN</span>';
+          } else if (t.status === 'CLOSED') {
+            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-700 bg-zinc-800 text-zinc-400 font-medium">CLOSED</span>';
+          }
+
           return `
             <tr class="hover:bg-zinc-900/60 transition mono text-xs">
               <td class="py-2.5 px-3 font-semibold text-white">${t.ticker}</td>
               <td class="py-2.5 px-3"><span class="font-bold text-white">${t.action}</span></td>
               <td class="py-2.5 px-3 text-zinc-300">${t.quantity}</td>
-              <td class="py-2.5 px-3 text-zinc-300">${sym}${t.entry_price}</td>
-              <td class="py-2.5 px-3 text-zinc-400">${sym}${t.stop_loss}</td>
-              <td class="py-2.5 px-3 text-white font-medium">${sym}${t.take_profit}</td>
-              <td class="py-2.5 px-3 text-zinc-400">${sym}${t.risk_amount}</td>
-              <td class="py-2.5 px-3"><span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-800 bg-zinc-900 text-zinc-300">${t.status}</span></td>
+              <td class="py-2.5 px-3 text-zinc-300">${sym}${entry.toFixed(2)}</td>
+              <td class="py-2.5 px-3 text-white font-medium">${sym}${live.toFixed(2)}</td>
+              <td class="py-2.5 px-3 text-zinc-400">${sym}${parseFloat(t.stop_loss).toFixed(2)}</td>
+              <td class="py-2.5 px-3 text-zinc-300">${sym}${parseFloat(t.take_profit).toFixed(2)}</td>
+              <td class="py-2.5 px-3 ${pnlColor}">${pnlSign}${sym}${pnlVal.toFixed(2)} (${pnlSign}${pnlPct.toFixed(2)}%)</td>
+              <td class="py-2.5 px-3">${stageBadge}</td>
             </tr>
           `;
         }).join('');

@@ -33,7 +33,7 @@ class MultiProviderLLM:
 
     def __init__(self):
         self.gemini_key = GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
-        self.gemini_model = GEMINI_MODEL or os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+        self.gemini_model = GEMINI_MODEL or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
         self.groq_key = GROQ_API_KEY or os.getenv("GROQ_API_KEY", "")
         self.groq_model = GROQ_MODEL or os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 
@@ -124,7 +124,7 @@ class MultiProviderLLM:
 
         # 1. Try Gemini
         if self.gemini_client:
-            models_to_try = [self.gemini_model, "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.5-flash"]
+            models_to_try = [self.gemini_model, "gemini-3.8-flash", "gemini-4-argon", "gemini-3.5-flash-lite", "gemini-2.5-flash"]
             seen = set()
             gemini_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
@@ -166,8 +166,10 @@ class MultiProviderLLM:
         """
         # 1. Try Gemini
         if self.gemini_client:
-            models_to_try = [self.gemini_model, "gemini-3.5-flash-lite", "gemini-3.8-flash"]
-            for model in models_to_try:
+            models_to_try = [self.gemini_model, "gemini-3.8-flash", "gemini-4-argon", "gemini-3.5-flash-lite"]
+            seen = set()
+            gemini_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
+            for model in gemini_models:
                 try:
                     res = self.gemini_client.models.generate_content(
                         model=model,

@@ -109,6 +109,14 @@ class PositionManager:
                 )
 
                 pct_gain = ((curr_price - entry_price) / entry_price) * 100.0
+                floating_pnl = round((curr_price - entry_price) * quantity, 2)
+
+                # Persist live mark-to-market price and floating P&L to database
+                cursor.execute(
+                    "UPDATE trades SET current_price = ?, pnl = ?, pnl_percentage = ? WHERE id = ?",
+                    (curr_price, floating_pnl, round(pct_gain, 2), trade_id),
+                )
+                conn.commit()
 
                 # Rule 0: Hard Stop Loss or Trailing Floor Hit
                 if curr_price <= stop_loss:

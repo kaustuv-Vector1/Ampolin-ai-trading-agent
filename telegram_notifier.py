@@ -8,7 +8,19 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Optional, Dict, Any
+import re
+from typing import Optional, Dict, Any, List
+
+RECENT_NOTIFICATIONS: List[str] = []
+
+def record_notification(msg: str):
+    clean = re.sub(r'<[^>]+>', '', msg).strip()
+    RECENT_NOTIFICATIONS.append(clean)
+    if len(RECENT_NOTIFICATIONS) > 6:
+        RECENT_NOTIFICATIONS.pop(0)
+
+def get_recent_notifications() -> List[str]:
+    return list(RECENT_NOTIFICATIONS)
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -42,6 +54,7 @@ class TelegramNotifier:
             logger.info("Telegram notifier running in local console-logger mode (bot token or chat ID not set).")
 
     async def _send_async(self, message: str) -> bool:
+        record_notification(message)
         if not self.is_configured:
             print(f"\n[TELEGRAM BROADCAST CONSOLE DUMP]\n{message}\n" + "-" * 50)
             return True

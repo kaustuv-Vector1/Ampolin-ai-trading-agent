@@ -27,8 +27,8 @@ DHAN_ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN", "")
 
 # Gemini AI Credentials & Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Configurable model name (defaults to gemini-3.5-flash-lite / gemini-3.8-flash)
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+# Configurable model name (defaults to gemini-3.8-flash / gemini-4-argon with multi-tier fallback)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 # Groq High-Speed LLM Backup Credentials (Ultra-low latency, auto-failover when Gemini rate limited)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
