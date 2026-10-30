@@ -167,13 +167,26 @@ def get_system_status():
     open_trades = trade_logger.get_open_trades()
     summary = trade_logger.calculate_daily_summary()
     regime = regime_analyzer.analyze_regime()
+
+    starting_capital = 100000.0
+    deployed_margin = sum(float(t.get("capital_allocated") or 0.0) for t in open_trades)
+    realized_pnl = summary.get("realized_pnl", 0.0)
+    unrealized_pnl = summary.get("unrealized_pnl", 0.0)
+    total_pnl = summary.get("total_pnl", 0.0)
+    available_cash = round(starting_capital - deployed_margin + realized_pnl, 2)
+    portfolio_equity = round(starting_capital + total_pnl, 2)
+
     return {
         "status": "ONLINE",
         "system_name": "Ampolin AI Trading Agent",
+        "starting_capital": starting_capital,
+        "available_cash": available_cash,
+        "deployed_margin": round(deployed_margin, 2),
+        "portfolio_equity": portfolio_equity,
         "open_positions": len(open_trades),
-        "daily_pnl": summary.get("realized_pnl", 0.0),
-        "unrealized_pnl": summary.get("unrealized_pnl", 0.0),
-        "total_pnl": summary.get("total_pnl", 0.0),
+        "daily_pnl": realized_pnl,
+        "unrealized_pnl": unrealized_pnl,
+        "total_pnl": total_pnl,
         "win_rate": summary.get("win_rate", 0.0),
         "broker_mode": "Paper Trading (Simulation)" if broker.dry_run or not broker.dhan else "DhanHQ Live",
         "ai_model": brain.model_name,
@@ -321,10 +334,19 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
   </header>
 
   <!-- Metric Overview Bar (Minimalist Cards) -->
-  <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-5 sm:pt-6 grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3.5">
+  <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-5 sm:pt-6 grid grid-cols-2 md:grid-cols-6 gap-2.5 sm:gap-3.5">
     <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
       <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
-        <span>Portfolio P&amp;L (Floating)</span>
+        <span>Portfolio Equity</span>
+        <i class="fa-solid fa-wallet text-zinc-600"></i>
+      </div>
+      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-equity">₹100,000.00</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-funds-breakdown">Cash: ₹100,000 | Invested: ₹0</div>
+    </div>
+
+    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
+      <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
+        <span>Total P&amp;L (Floating)</span>
         <i class="fa-solid fa-chart-line text-zinc-600"></i>
       </div>
       <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-pnl">₹0.00</div>
@@ -610,6 +632,11 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
           pnlEl.className = 'text-xl sm:text-2xl font-bold text-white mono';
         }
         document.getElementById('metric-pnl-breakdown').innerText = `Floating: ${uSign}₹${unrealized.toFixed(2)} | Realized: ${rSign}₹${realized.toFixed(2)}`;
+
+        if (data.portfolio_equity !== undefined) {
+          document.getElementById('metric-equity').innerText = '₹' + Number(data.portfolio_equity).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          document.getElementById('metric-funds-breakdown').innerText = `Cash: ₹${Number(data.available_cash || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} | Invested: ₹${Number(data.deployed_margin || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+        }
 
         document.getElementById('metric-winrate').innerText = (data.win_rate * 100).toFixed(1) + '%';
         document.getElementById('metric-open-trades').innerText = data.open_positions;

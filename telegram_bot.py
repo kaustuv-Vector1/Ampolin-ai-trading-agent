@@ -108,19 +108,24 @@ class InteractiveTelegramBot:
 
         open_trades = self.logger.get_open_trades()
         if not open_trades:
-            await update.message.reply_text("📭 <b>No active open positions.</b>\nSystem is currently in cash.", parse_mode="HTML")
+            await update.message.reply_text("📭 <b>No active open positions.</b>\nSystem is currently 100% in cash (₹1,00,000 virtual balance).", parse_mode="HTML")
             return
 
         lines = [f"📈 <b>ACTIVE OPEN POSITIONS ({len(open_trades)})</b>\n"]
         for t in open_trades:
             sym = "$" if not t["ticker"].endswith(".NS") else "₹"
             stage = t.get("stage", "INITIAL")
+            entry = float(t["entry_price"])
+            curr = float(t.get("current_price") or entry)
+            gain_pct = ((curr - entry) / entry) * 100.0
+            pnl = float(t.get("pnl") or (curr - entry) * t["quantity"])
+            pnl_sign = "+" if pnl >= 0 else ""
             lines.append(
-                f"• <b>{t['ticker']}</b>\n"
-                f"  Entry: {sym}{t['entry_price']} | Qty: {t['quantity']}\n"
-                f"  SL: {sym}{t['stop_loss']} | Target: {sym}{t['take_profit']}\n"
+                f"• <b>{t['ticker']}</b> ({t['quantity']} shares)\n"
+                f"  Entry: {sym}{entry:.2f} | <b>Live Price: {sym}{curr:.2f}</b>\n"
+                f"  <b>Gain:</b> {pnl_sign}{gain_pct:.2f}% ({pnl_sign}{sym}{pnl:.2f})\n"
+                f"  Stop Loss: {sym}{float(t['stop_loss']):.2f} | Target: {sym}{float(t['take_profit']):.2f}\n"
                 f"  Stage: <code>{stage}</code>\n"
-                f"  Risk: {sym}{t['risk_amount']:.2f}\n"
             )
 
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
@@ -130,16 +135,30 @@ class InteractiveTelegramBot:
             return
 
         summary = self.logger.calculate_daily_summary()
-        pnl = summary.get("realized_pnl", 0.0)
-        pnl_sign = "+" if pnl >= 0 else ""
-        icon = "🟢" if pnl >= 0 else "🔴"
+        open_trades = self.logger.get_open_trades()
+        realized = summary.get("realized_pnl", 0.0)
+        unrealized = summary.get("unrealized_pnl", 0.0)
+        total = summary.get("total_pnl", 0.0)
+
+        starting_capital = 100000.0
+        deployed_margin = sum(float(t.get("capital_allocated") or 0.0) for t in open_trades)
+        available_cash = round(starting_capital - deployed_margin + realized, 2)
+        portfolio_equity = round(starting_capital + total, 2)
+
+        pnl_sign = "+" if total >= 0 else ""
+        icon = "🟢" if total >= 0 else "🔴"
 
         msg = (
-            f"💰 <b>TODAY'S P&L SUMMARY ({summary.get('date')})</b>\n\n"
-            f"• <b>Realized P&L:</b> {icon} <b>{pnl_sign}₹{pnl:,.2f}</b>\n"
-            f"• <b>Win Rate:</b> {summary.get('win_rate', 0.0)*100:.1f}%\n"
-            f"• <b>Wins:</b> {summary.get('win_count', 0)} | <b>Losses:</b> {summary.get('loss_count', 0)}\n"
-            f"• <b>Open Positions:</b> {summary.get('open_positions', 0)}"
+            f"💼 <b>PAPER TRADING ACCOUNT & P&L</b>\n\n"
+            f"• <b>Total Account Equity:</b> <b>₹{portfolio_equity:,.2f}</b> ({pnl_sign}₹{total:,.2f})\n"
+            f"• <b>Starting Virtual Funds:</b> ₹{starting_capital:,.2f}\n"
+            f"• <b>Available Free Cash:</b> ₹{available_cash:,.2f}\n"
+            f"• <b>Invested Margin:</b> ₹{deployed_margin:,.2f}\n\n"
+            f"• <b>Floating (Open) P&L:</b> {icon} <b>+{pnl_sign}₹{unrealized:,.2f}</b>\n"
+            f"• <b>Realized P&L (Banked):</b> ₹{realized:,.2f}\n"
+            f"• <b>Active Open Trades:</b> {len(open_trades)} positions\n"
+            f"• <b>Win Rate:</b> {summary.get('win_rate', 0.0)*100:.1f}%\n\n"
+            f"💡 <i>Realized P&L is ₹0.00 because positions are currently open and running. Profits are actively floating at +₹{unrealized:,.2f} and will be banked into Realized P&L upon exit!</i>"
         )
         await update.message.reply_text(msg, parse_mode="HTML")
 
