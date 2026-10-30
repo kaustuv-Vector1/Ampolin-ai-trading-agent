@@ -14,6 +14,7 @@ from typing import Optional, List
 import uvicorn
 from fastapi import FastAPI, BackgroundTasks, Query
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from config import (
@@ -36,6 +37,38 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("AmpolinUI")
 
 app = FastAPI(title="Ampolin AI Trading Agent", version="1.0.0")
+
+# Mount assets directory for PWA icons
+assets_path = Path(__file__).resolve().parent / "assets"
+if assets_path.exists():
+    app.mount("/static", StaticFiles(directory=str(assets_path)), name="static")
+
+@app.get("/manifest.json")
+def pwa_manifest():
+    return JSONResponse({
+        "name": "Ampolin AI Trading Agent",
+        "short_name": "Ampolin AI",
+        "description": "Automated Swing Trading System for NSE & Wall Street",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0b0f17",
+        "theme_color": "#0b0f17",
+        "orientation": "portrait-primary",
+        "icons": [
+            {
+                "src": "/static/ampolin_icon_sq.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any maskable"
+            },
+            {
+                "src": "/static/ampolin_icon_sq.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable"
+            }
+        ]
+    })
 
 # Pipeline singletons
 scanner = SwingScanner()
@@ -166,8 +199,16 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Ampolin AI Trading Agent | NSE Equities Terminal</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/static/ampolin_icon_sq.png">
+  <link rel="apple-touch-icon" href="/static/ampolin_icon_sq.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Ampolin AI">
+  <meta name="theme-color" content="#0b0f17">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -196,9 +237,7 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
   <!-- Top Navigation Header -->
   <header class="bg-dark-800 border-b border-dark-700 px-6 py-4 flex flex-wrap justify-between items-center sticky top-0 z-50">
     <div class="flex items-center space-x-3">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/30">
-        <i class="fa-solid fa-chart-line"></i>
-      </div>
+      <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-10 h-10 rounded-xl shadow-lg border border-blue-500/30 object-cover">
       <div>
         <h1 class="text-xl font-black tracking-wide text-white flex items-center gap-2">
           AMPOLIN <span class="text-blue-500 font-medium text-sm px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">AI TRADING AGENT</span>
