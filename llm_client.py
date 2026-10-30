@@ -98,19 +98,35 @@ class MultiProviderLLM:
 
         return None
 
-    def generate_chat_response(self, user_prompt: str, system_prompt: str = "") -> Optional[str]:
+    def generate_chat_response(
+        self,
+        user_prompt: str,
+        system_prompt: str = "",
+        history: Optional[List[Dict[str, str]]] = None,
+    ) -> Optional[str]:
         """
-        Chat completion with automatic failover:
+        Chat completion with multi-turn conversation memory and automatic failover:
         1. Attempts Gemini.
         2. If rate-limited (HTTP 429 / Quota / Timeout), immediately falls back to Groq.
         """
+        # Format conversation history string
+        history_lines = []
+        if history:
+            for item in history[-8:]:  # Preserve last 8 turns for continuity
+                r = "Trader" if item.get("role") == "user" else "Ampolin AI"
+                history_lines.append(f"{r}: {item.get('content', '')}")
+        history_str = "\n".join(history_lines)
+
+        full_prompt = system_prompt
+        if history_str:
+            full_prompt += f"\n\n=== RECENT DIALOGUE THREAD ===\n{history_str}"
+        full_prompt += f"\n\nTrader: {user_prompt}\nAmpolin AI:"
+
         # 1. Try Gemini
         if self.gemini_client:
             models_to_try = [self.gemini_model, "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.5-flash"]
             seen = set()
             gemini_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
-
-            full_prompt = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
 
             for model in gemini_models:
                 try:
@@ -120,7 +136,7 @@ class MultiProviderLLM:
                     )
                     if res and res.text:
                         logger.info(f"[LLM] Gemini ({model}) responded successfully.")
-                        return res.text
+                        return res.text.strip()
                 except Exception as e:
                     logger.warning(f"[LLM] Gemini ({model}) rate limit or error: {e}")
                     continue
@@ -130,11 +146,15 @@ class MultiProviderLLM:
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
+        if history:
+            for item in history[-8:]:
+                role = "assistant" if item.get("role") in ("assistant", "model") else "user"
+                messages.append({"role": role, "content": item.get("content", "")})
         messages.append({"role": "user", "content": user_prompt})
 
         groq_resp = self.call_groq(messages=messages, json_mode=False)
         if groq_resp:
-            return groq_resp
+            return groq_resp.strip()
 
         return None
 

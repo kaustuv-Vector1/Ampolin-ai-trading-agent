@@ -50,6 +50,7 @@ class InteractiveTelegramBot:
         self.regime_analyzer = MarketRegimeAnalyzer(sample_size=20)
         self.app = None
         self.llm = MultiProviderLLM()
+        self.chat_memories = {}  # Stores recent dialogue per chat_id
 
     def is_authorized(self, update: Update) -> bool:
         """Ensures only the account owner can interact with the bot."""
@@ -193,15 +194,16 @@ class InteractiveTelegramBot:
         await update.message.reply_text(msg, parse_mode="HTML")
 
     async def handle_natural_chat(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Processes conversational trading questions using Gemini AI with instant Groq failover."""
+        """Processes conversational trading questions with multi-turn memory and instant Groq failover."""
         if not self.is_authorized(update):
             return
 
-        user_text = update.message.text
+        user_text = (update.message.text or "").strip()
         if not user_text:
             return
 
-        logger.info(f"Incoming Telegram chat message: '{user_text}' from chat_id: {update.effective_chat.id}")
+        chat_id = str(update.effective_chat.id)
+        logger.info(f"Incoming Telegram chat message: '{user_text}' from chat_id: {chat_id}")
 
         # Show typing status
         await update.message.chat.send_action("typing")
@@ -211,29 +213,44 @@ class InteractiveTelegramBot:
         summary = self.logger.calculate_daily_summary()
 
         system_prompt = f"""
-You are Ampolin AI, an elite quantitative swing trading partner chatting directly with your creator/trader, Kaustuv.
-You manage an automated swing trading system operating on Indian Equities (NSE) and Wall Street (US).
+You are Ampolin AI, an institutional-grade quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
 
-Current System Context:
+Current Portfolio & System Context:
 - Active Open Positions: {positions_str}
-- Today's Realized P&L: ₹{summary.get('realized_pnl', 0.0):,.2f}
-- Core Strategy: 20/50 EMA breakouts, RSI 48-68 momentum, VectorBT backtest verification, 1R breakeven, 3.5% profit ratchet (locks +2%), and 20 EMA trailing.
-- Risk Rule: Hard 0.75%-1.0% max account risk per trade. Zero leverage (Cash Delivery only).
+- Realized P&L Today: ₹{summary.get('realized_pnl', 0.0):,.2f}
+- Core Strategy: 20/50 EMA breakouts, RSI 48-68 momentum, VectorBT backtest verification, 1R breakeven, 3.5% profit ratchet (locks +2.0%), and 20 EMA trailing.
+- Risk Budget: Hard 0.75%-1.0% max account risk per trade. Zero leverage (Cash Delivery only).
 
-Answer Kaustuv's question directly, concisely, and with sharp quantitative insight.
-Use bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep answers under 3-4 short paragraphs so it reads great on mobile Telegram.
+CONVERSATION & TONE RULES:
+1. NEVER start messages by repeatedly greeting "Hey Kaustuv" or "Hello Kaustuv". Dive straight into the core answer or insight like a sharp, professional hedge-fund partner.
+2. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. If Kaustuv asks about a previously mentioned stock or idea, seamlessly connect the dots without asking him to repeat himself.
+3. PROACTIVE FOLLOW-UPS: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, inspect a specific chart, or adjust profit lock parameters).
+4. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it under 2-3 short, easily scannable paragraphs on mobile Telegram.
 """
+
+        if chat_id not in self.chat_memories:
+            self.chat_memories[chat_id] = []
+
+        chat_history = self.chat_memories[chat_id]
 
         try:
             response_text = self.llm.generate_chat_response(
                 user_prompt=user_text,
                 system_prompt=system_prompt,
+                history=chat_history,
             )
 
             if response_text:
+                # Update memory
+                chat_history.append({"role": "user", "content": user_text})
+                chat_history.append({"role": "assistant", "content": response_text})
+                # Keep last 10 messages
+                if len(chat_history) > 10:
+                    self.chat_memories[chat_id] = chat_history[-10:]
+
                 await update.message.reply_text(response_text)
             else:
-                await update.message.reply_text("I'm analyzing the market data, but couldn't generate a response. Please ask again!")
+                await update.message.reply_text("I'm reviewing the live market data feeds right now. Could you ask that once more?")
 
         except Exception as e:
             logger.error(f"Error handling Telegram chat: {e}")

@@ -9,7 +9,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 import uvicorn
 from fastapi import FastAPI, BackgroundTasks, Query
@@ -102,11 +102,12 @@ class ScanRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    history: Optional[List[Dict[str, str]]] = None
 
 
 @app.post("/api/chat")
 def in_app_chat(req: ChatRequest):
-    """Direct in-app conversation with Ampolin AI powered by Gemini Flash & Groq fallback."""
+    """Direct in-app conversation with Ampolin AI with multi-turn memory and instant Groq fallback."""
     user_msg = (req.message or "").strip()
     if not user_msg:
         return {"reply": "Please type a message to start chatting!"}
@@ -117,7 +118,8 @@ def in_app_chat(req: ChatRequest):
     regime = regime_analyzer.analyze_regime()
 
     system_prompt = f"""
-You are Ampolin AI, an elite institutional quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
+You are Ampolin AI, an institutional-grade quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
+
 Current System Context:
 - Active Open Positions: {positions_str}
 - Today's Realized P&L: ₹{summary.get('realized_pnl', 0.0):,.2f}
@@ -125,10 +127,13 @@ Current System Context:
 - Market Breadth: {regime.market_breadth_pct:.1f}% stocks > 50 EMA ({regime.breadth_regime})
 - Trading Rules: 1% risk budgeting, 20/50 EMA breakouts, RSI 48-68 momentum, VectorBT statistical edge (Win Rate >= 52%, Profit Factor >= 1.50), 1R breakeven, 3.5% profit ratchet (locks +2.0%), and 20 EMA trailing.
 
-Answer Kaustuv's question directly, concisely, and with sharp quantitative insight.
-Use bullet points and bolding where helpful. Keep it concise so it reads great on mobile.
+CONVERSATION & TONE RULES:
+1. NEVER start messages by repeatedly greeting "Hey Kaustuv" or "Hello Kaustuv". Dive straight into the core answer or insight like a sharp, professional hedge-fund partner.
+2. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Reference earlier stocks, rules, or questions seamlessly.
+3. PROACTIVE ENGAGEMENT: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, review trailing stops, or inspect a specific chart).
+4. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it scannable on mobile.
 """
-    reply = llm_brain.generate_chat_response(user_prompt=user_msg, system_prompt=system_prompt)
+    reply = llm_brain.generate_chat_response(user_prompt=user_msg, system_prompt=system_prompt, history=req.history)
     if not reply:
         reply = "I'm currently updating live feeds. Please ask again in a few seconds!"
     return {"reply": reply}
@@ -858,14 +863,21 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       `;
       container.scrollTop = container.scrollHeight;
 
+      if (!window.chatSessionHistory) window.chatSessionHistory = [];
+      window.chatSessionHistory.push({ role: 'user', content: msg });
+
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg })
+          body: JSON.stringify({ message: msg, history: window.chatSessionHistory })
         });
         const data = await res.json();
         document.getElementById(typingId)?.remove();
+
+        if (data.reply) {
+          window.chatSessionHistory.push({ role: 'assistant', content: data.reply });
+        }
 
         const formatted = (data.reply || "No reply generated.")
           .replace(/\\n\\n/g, '<br><br>')
