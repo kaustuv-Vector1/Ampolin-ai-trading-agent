@@ -30,6 +30,10 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # Configurable model name (defaults to gemini-3.5-flash-lite / gemini-3.8-flash)
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
+# Groq High-Speed LLM Backup Credentials (Ultra-low latency, auto-failover when Gemini rate limited)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
+
 # Telegram Bot Credentials
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")

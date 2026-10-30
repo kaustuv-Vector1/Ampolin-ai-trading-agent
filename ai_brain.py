@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from config import GEMINI_API_KEY, GEMINI_MODEL, ACTIVE_RULES_PATH
 from scanner import CandidateSetup
 from sandbox import BacktestResult
+from llm_client import MultiProviderLLM
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("AmpolinBrain")
@@ -53,6 +54,7 @@ class GeminiBrain:
         self.api_key = api_key or GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
         self.model_name = model_name or GEMINI_MODEL or "gemini-3.5-flash-lite"
         self.trade_logger = trade_logger
+        self.llm = MultiProviderLLM()
         self.catalyst_tracker = None
         try:
             from catalyst_tracker import CatalystTracker
@@ -69,7 +71,7 @@ class GeminiBrain:
             except Exception as e:
                 logger.warning(f"Could not initialize Gemini Client: {e}. Will use intelligent fallback.")
         else:
-            logger.info("No active GEMINI_API_KEY configured. GeminiBrain will operate in rule-based verification fallback.")
+            logger.info("No active GEMINI_API_KEY configured. GeminiBrain will operate with Groq/rule-based fallback.")
 
     def _build_analysis_prompt(self, setup: CandidateSetup, backtest: BacktestResult, rules: Dict[str, Any]) -> str:
         sym = "₹" if setup.currency == "INR" else "$"
@@ -145,11 +147,11 @@ Provide your strict JSON response evaluating whether to BUY, SELL, or PASS this 
             except Exception:
                 pass
 
-        # If live API client is available, call Gemini Flash with strict Pydantic schema
+        prompt = self._build_analysis_prompt(setup, backtest, rules)
+
+        # 1. First attempt via Gemini client if initialized
         if self.client:
-            prompt = self._build_analysis_prompt(setup, backtest, rules)
             models_to_try = [self.model_name, "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.5-flash"]
-            # Deduplicate preserving order
             seen = set()
             unique_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
@@ -176,7 +178,22 @@ Provide your strict JSON response evaluating whether to BUY, SELL, or PASS this 
                     logger.warning(f"Error querying model '{model}': {e}. Trying fallback model...")
                     continue
 
-        # Intelligent deterministic fallback when GEMINI_API_KEY is not configured
+        # 2. Seamless failover to Groq JSON mode
+        logger.info(f"Failing over to Groq AI Engine for {setup.ticker} decision...")
+        groq_data = self.llm.evaluate_setup_json(prompt, TradeDecision)
+        if groq_data:
+            try:
+                parsed_decision = TradeDecision.model_validate(groq_data)
+                logger.info(
+                    f"Groq Decision for {setup.ticker}: {parsed_decision.action} | "
+                    f"Confidence: {parsed_decision.confidence:.2f} | "
+                    f"Entry: ₹{parsed_decision.entry_price} | SL: ₹{parsed_decision.stop_loss} | TP: ₹{parsed_decision.take_profit}"
+                )
+                return parsed_decision
+            except Exception as e:
+                logger.warning(f"Could not validate Groq decision JSON into TradeDecision schema: {e}")
+
+        # 3. Intelligent deterministic fallback
         logger.info(f"Using rule-based AI verification engine for {setup.ticker}")
         return self._rule_based_fallback(setup, backtest)
 

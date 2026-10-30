@@ -27,9 +27,10 @@ from telegram.ext import (
     filters,
 )
 
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GEMINI_API_KEY, GEMINI_MODEL
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GEMINI_API_KEY, GEMINI_MODEL, GROQ_API_KEY
 from reflection import TradeLogger
 from market_regime import MarketRegimeAnalyzer
+from llm_client import MultiProviderLLM
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("AmpolinTelegramBot")
@@ -48,13 +49,7 @@ class InteractiveTelegramBot:
         self.logger = TradeLogger()
         self.regime_analyzer = MarketRegimeAnalyzer(sample_size=20)
         self.app = None
-        self.gemini_client = None
-
-        if GEMINI_API_KEY and GENAI_AVAILABLE:
-            try:
-                self.gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-            except Exception as e:
-                logger.warning(f"Could not initialize Gemini Client for Telegram: {e}")
+        self.llm = MultiProviderLLM()
 
     def is_authorized(self, update: Update) -> bool:
         """Ensures only the account owner can interact with the bot."""
@@ -198,7 +193,7 @@ class InteractiveTelegramBot:
         await update.message.reply_text(msg, parse_mode="HTML")
 
     async def handle_natural_chat(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Processes conversational trading questions using Gemini AI."""
+        """Processes conversational trading questions using Gemini AI with instant Groq failover."""
         if not self.is_authorized(update):
             return
 
@@ -207,10 +202,6 @@ class InteractiveTelegramBot:
             return
 
         logger.info(f"Incoming Telegram chat message: '{user_text}' from chat_id: {update.effective_chat.id}")
-
-        if not self.gemini_client:
-            await update.message.reply_text("Gemini AI is not connected for chat.")
-            return
 
         # Show typing status
         await update.message.chat.send_action("typing")
@@ -234,21 +225,10 @@ Use bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰).
 """
 
         try:
-            full_prompt = f"{system_prompt}\n\nKaustuv asks: {user_text}"
-            models_to_try = [GEMINI_MODEL, "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.5-flash"]
-            response_text = None
-
-            for model in models_to_try:
-                try:
-                    res = self.gemini_client.models.generate_content(
-                        model=model,
-                        contents=full_prompt,
-                    )
-                    if res and res.text:
-                        response_text = res.text
-                        break
-                except Exception:
-                    continue
+            response_text = self.llm.generate_chat_response(
+                user_prompt=user_text,
+                system_prompt=system_prompt,
+            )
 
             if response_text:
                 await update.message.reply_text(response_text)
