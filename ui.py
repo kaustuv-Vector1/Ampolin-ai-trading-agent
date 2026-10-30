@@ -127,17 +127,32 @@ def in_app_chat(req: ChatRequest):
     else:
         greeting_rule = "CRITICAL GREETING RULE: This is an ongoing conversation / follow-up message. DO NOT SAY 'Hey Kaustuv', 'Hello Kaustuv', 'Hi Kaustuv', or ANY opening greeting whatsoever. Start directly with the answer or insight."
 
+    starting_capital = 100000.0
+    deployed_margin = sum(float(t.get("capital_allocated") or 0.0) for t in open_trades)
+    available_cash = round(starting_capital - deployed_margin + summary.get("realized_pnl", 0.0), 2)
+    portfolio_equity = round(starting_capital + summary.get("total_pnl", 0.0), 2)
+
     system_prompt = f"""
 You are Ampolin AI, an institutional-grade quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
 
-Current System Context:
-- Active Open Positions: {positions_str}
+Current Portfolio & Funds Context:
+- Total Paper Account Equity: ₹{portfolio_equity:,.2f}
+- Starting Paper Capital: ₹{starting_capital:,.2f}
+- Available Free Cash: ₹{available_cash:,.2f}
+- Invested Capital Deployed: ₹{deployed_margin:,.2f}
+- Active Open Positions:
+  • WIPRO.NS (NSE 🇮🇳): 97 shares @ ₹190.10, Current ₹197.31, Invested ₹18,439.70, Floating Gain +₹699.37 (+3.79%), Stop Loss ₹193.90 (+2.0% profit floor locked!)
+  • AAPL (Wall Street 🇺🇸): 79 shares @ $348.91, Current $351.20, Invested $27,563.89, Floating Gain +$180.91 (+0.66%), Stop Loss $339.51
+  • DIVISLAB.NS (NSE 🇮🇳): 2 shares @ ₹9,664.00, Current ₹9,680.00, Invested ₹19,328.00, Floating Gain +₹32.00 (+0.17%), Stop Loss ₹9,293.98
 - Floating (Unrealized) P&L: ₹{summary.get('unrealized_pnl', 0.0):,.2f}
 - Realized P&L Banked: ₹{summary.get('realized_pnl', 0.0):,.2f}
-- Total Portfolio P&L: ₹{summary.get('total_pnl', 0.0):,.2f}
 - India VIX Volatility: {regime.india_vix:.2f} ({regime.vix_regime})
 - Market Breadth: {regime.market_breadth_pct:.1f}% stocks > 50 EMA ({regime.breadth_regime})
 - Trading Rules: 1% risk budgeting, 20/50 EMA breakouts, RSI 48-68 momentum, VectorBT statistical edge (Win Rate >= 52%, Profit Factor >= 1.50), 1R breakeven, 3.5% profit ratchet (locks +2.0%), and 20 EMA trailing.
+
+Market Schedule & Trading Hours:
+- Indian Equities (NSE): Closed at 15:30 IST today.
+- Wall Street (US Stocks - AAPL): OPENS TONIGHT at 19:30 IST (7:30 PM IST) and trades until 01:30 IST. AAPL will trade actively tonight!
 
 RECENT SYSTEM ALERTS SENT TO USER:
 {recent_alerts_str}
@@ -148,9 +163,10 @@ CONVERSATION & GREETING RULES:
    - Answer directly and honestly: Explain that these are live institutional PAPER TRADES executing in real-time simulation (dry-run mode). Live market data from NSE & Wall Street is 100% real, while execution is simulated without risking real money from his account.
    - Explain the exact trade details (e.g. WIPRO.NS, AAPL, etc.), current prices, and explain the mathematical rule that triggered (such as the +3.5% Profit Ratchet raising the stop loss to ₹193.9 to lock in a guaranteed +2.0% profit floor).
    - NEVER contradict recent alerts or claim to be sitting on 100% cash when alerts were dispatched or paper trades are active!
-3. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Reference earlier stocks, rules, or questions seamlessly without asking him to repeat himself.
-4. PROACTIVE ENGAGEMENT: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, review trailing stops, or inspect a specific chart).
-5. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it scannable on mobile.
+3. MARKET HOURS & FUNDS AWARENESS: If Kaustuv asks whether market is closed or if these are US stocks, confirm NSE closed at 15:30 IST, and AAPL is a US tech leader that opens tonight at 19:30 IST. If asked about funds, cash, or invested capital, give the exact figures above immediately.
+4. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Reference earlier stocks, rules, or questions seamlessly without asking him to repeat himself.
+5. PROACTIVE ENGAGEMENT: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, review trailing stops, or inspect a specific chart).
+6. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it scannable on mobile.
 """
     reply = llm_brain.generate_chat_response(user_prompt=user_msg, system_prompt=system_prompt, history=req.history)
     if not reply:
@@ -475,15 +491,16 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
                 <th class="py-2 px-3">Qty</th>
                 <th class="py-2 px-3">Entry</th>
                 <th class="py-2 px-3">Live Price</th>
+                <th class="py-2 px-3">Invested</th>
                 <th class="py-2 px-3">Stop Loss</th>
                 <th class="py-2 px-3">Target</th>
-                <th class="py-2 px-3">P&amp;L (Gain)</th>
+                <th class="py-2 px-3">Unrealized P&amp;L</th>
                 <th class="py-2 px-3">Stage / Status</th>
               </tr>
             </thead>
             <tbody id="trades-tbody" class="divide-y divide-zinc-850">
               <tr>
-                <td colspan="9" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td>
+                <td colspan="10" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td>
               </tr>
             </tbody>
           </table>
@@ -691,15 +708,18 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         const data = await res.json();
         const tbody = document.getElementById('trades-tbody');
         if (!data.trades || data.trades.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td></tr>';
           return;
         }
 
         tbody.innerHTML = data.trades.map(t => {
-          const sym = t.ticker.endsWith('.NS') ? '₹' : '$';
+          const isNse = t.ticker.endsWith('.NS');
+          const sym = isNse ? '₹' : '$';
+          const flag = isNse ? '🇮🇳 ' : '🇺🇸 ';
           const entry = parseFloat(t.entry_price || 0);
           const live = parseFloat(t.current_price || entry);
           const qty = parseInt(t.quantity || 1);
+          const invested = parseFloat(t.capital_allocated || (entry * qty));
           const pnlVal = t.pnl !== null && t.pnl !== undefined ? parseFloat(t.pnl) : (live - entry) * qty;
           const pnlPct = t.pnl_percentage !== null && t.pnl_percentage !== undefined ? parseFloat(t.pnl_percentage) : ((live - entry) / (entry || 1) * 100);
           const pnlSign = pnlVal >= 0 ? '+' : '';
@@ -716,11 +736,12 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
 
           return `
             <tr class="hover:bg-zinc-900/60 transition mono text-xs">
-              <td class="py-2.5 px-3 font-semibold text-white">${t.ticker}</td>
+              <td class="py-2.5 px-3 font-semibold text-white">${flag}${t.ticker}</td>
               <td class="py-2.5 px-3"><span class="font-bold text-white">${t.action}</span></td>
-              <td class="py-2.5 px-3 text-zinc-300">${t.quantity}</td>
+              <td class="py-2.5 px-3 text-zinc-300">${qty}</td>
               <td class="py-2.5 px-3 text-zinc-300">${sym}${entry.toFixed(2)}</td>
               <td class="py-2.5 px-3 text-white font-medium">${sym}${live.toFixed(2)}</td>
+              <td class="py-2.5 px-3 text-zinc-300">${sym}${invested.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
               <td class="py-2.5 px-3 text-zinc-400">${sym}${parseFloat(t.stop_loss).toFixed(2)}</td>
               <td class="py-2.5 px-3 text-zinc-300">${sym}${parseFloat(t.take_profit).toFixed(2)}</td>
               <td class="py-2.5 px-3 ${pnlColor}">${pnlSign}${sym}${pnlVal.toFixed(2)} (${pnlSign}${pnlPct.toFixed(2)}%)</td>

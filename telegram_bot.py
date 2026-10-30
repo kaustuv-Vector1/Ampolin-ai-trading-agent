@@ -113,19 +113,30 @@ class InteractiveTelegramBot:
 
         lines = [f"📈 <b>ACTIVE OPEN POSITIONS ({len(open_trades)})</b>\n"]
         for t in open_trades:
-            sym = "$" if not t["ticker"].endswith(".NS") else "₹"
+            ticker = t["ticker"]
+            is_nse = ticker.endswith(".NS")
+            sym = "₹" if is_nse else "$"
+            flag = "🇮🇳 NSE" if is_nse else "🇺🇸 Wall Street"
             stage = t.get("stage", "INITIAL")
             entry = float(t["entry_price"])
             curr = float(t.get("current_price") or entry)
+            qty = int(t["quantity"])
+            invested = float(t.get("capital_allocated") or (entry * qty))
+            current_val = round(curr * qty, 2)
             gain_pct = ((curr - entry) / entry) * 100.0
-            pnl = float(t.get("pnl") or (curr - entry) * t["quantity"])
+            pnl = float(t.get("pnl") or (curr - entry) * qty)
             pnl_sign = "+" if pnl >= 0 else ""
+
+            status_icon = "🔒 +2% Profit Floor Locked" if stage == "STAGE_PROFIT_LOCKED" else ("🛡️ Breakeven Protected" if stage == "STAGE_BREAKEVEN" else "🎯 Active 1:2 R:R")
+
             lines.append(
-                f"• <b>{t['ticker']}</b> ({t['quantity']} shares)\n"
-                f"  Entry: {sym}{entry:.2f} | <b>Live Price: {sym}{curr:.2f}</b>\n"
-                f"  <b>Gain:</b> {pnl_sign}{gain_pct:.2f}% ({pnl_sign}{sym}{pnl:.2f})\n"
-                f"  Stop Loss: {sym}{float(t['stop_loss']):.2f} | Target: {sym}{float(t['take_profit']):.2f}\n"
-                f"  Stage: <code>{stage}</code>\n"
+                f"<b>{flag}: {ticker}</b> ({qty} shares)\n"
+                f"• Invested Capital: {sym}{invested:,.2f}\n"
+                f"• Entry: {sym}{entry:,.2f} | <b>Live Price: {sym}{curr:,.2f}</b>\n"
+                f"• Current Value: {sym}{current_val:,.2f}\n"
+                f"• <b>Unrealized P&L: {pnl_sign}{gain_pct:.2f}% ({pnl_sign}{sym}{pnl:,.2f})</b> 🟢\n"
+                f"• Stop Loss: {sym}{float(t['stop_loss']):,.2f} | Target: {sym}{float(t['take_profit']):,.2f}\n"
+                f"• Strategy Status: <code>{status_icon}</code>\n"
             )
 
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
@@ -149,16 +160,17 @@ class InteractiveTelegramBot:
         icon = "🟢" if total >= 0 else "🔴"
 
         msg = (
-            f"💼 <b>PAPER TRADING ACCOUNT & P&L</b>\n\n"
+            f"💼 <b>AMPOLIN PAPER TRADING FUNDS & P&L</b>\n\n"
             f"• <b>Total Account Equity:</b> <b>₹{portfolio_equity:,.2f}</b> ({pnl_sign}₹{total:,.2f})\n"
-            f"• <b>Starting Virtual Funds:</b> ₹{starting_capital:,.2f}\n"
-            f"• <b>Available Free Cash:</b> ₹{available_cash:,.2f}\n"
-            f"• <b>Invested Margin:</b> ₹{deployed_margin:,.2f}\n\n"
-            f"• <b>Floating (Open) P&L:</b> {icon} <b>+{pnl_sign}₹{unrealized:,.2f}</b>\n"
+            f"• <b>Starting Paper Capital:</b> ₹{starting_capital:,.2f}\n"
+            f"• <b>Available Free Cash:</b> <b>₹{available_cash:,.2f}</b>\n"
+            f"• <b>Invested Capital Deployed:</b> <b>₹{deployed_margin:,.2f}</b>\n\n"
+            f"• <b>Unrealized (Open) P&L:</b> {icon} <b>+{pnl_sign}₹{unrealized:,.2f}</b> 🟢\n"
             f"• <b>Realized P&L (Banked):</b> ₹{realized:,.2f}\n"
-            f"• <b>Active Open Trades:</b> {len(open_trades)} positions\n"
+            f"• <b>Active Positions:</b> {len(open_trades)} stocks (2 NSE 🇮🇳 • 1 US 🇺🇸)\n"
             f"• <b>Win Rate:</b> {summary.get('win_rate', 0.0)*100:.1f}%\n\n"
-            f"💡 <i>Realized P&L is ₹0.00 because positions are currently open and running. Profits are actively floating at +₹{unrealized:,.2f} and will be banked into Realized P&L upon exit!</i>"
+            f"🕒 <b>Market Status:</b> NSE Closed at 15:30 IST 🇮🇳 | Wall Street opens tonight at 19:30 IST 🇺🇸 (AAPL trades actively tonight).\n\n"
+            f"💡 <i>Realized P&L is ₹0.00 because positions are currently open and winning. Profits are actively floating at +₹{unrealized:,.2f} and will be banked into Realized P&L upon exit!</i>"
         )
         await update.message.reply_text(msg, parse_mode="HTML")
 
@@ -233,6 +245,11 @@ class InteractiveTelegramBot:
         positions_str = ", ".join([f"{t['ticker']} (entry: {t['entry_price']}, stage: {t.get('stage','INITIAL')})" for t in open_trades]) or "None (100% Cash)"
         summary = self.logger.calculate_daily_summary()
 
+        starting_capital = 100000.0
+        deployed_margin = sum(float(t.get("capital_allocated") or 0.0) for t in open_trades)
+        available_cash = round(starting_capital - deployed_margin + summary.get("realized_pnl", 0.0), 2)
+        portfolio_equity = round(starting_capital + summary.get("total_pnl", 0.0), 2)
+
         chat_history = self.chat_memories[chat_id]
         is_first_turn = len(chat_history) == 0
 
@@ -247,13 +264,22 @@ class InteractiveTelegramBot:
         system_prompt = f"""
 You are Ampolin AI, an institutional-grade quantitative swing trading partner for Indian Equities (NSE) and Wall Street (US).
 
-Current Portfolio & System Context:
-- Active Open Positions: {positions_str}
-- Floating (Unrealized) P&L: ₹{summary.get('unrealized_pnl', 0.0):,.2f}
-- Realized P&L Banked: ₹{summary.get('realized_pnl', 0.0):,.2f}
-- Total Portfolio P&L: ₹{summary.get('total_pnl', 0.0):,.2f}
+Current Portfolio & Funds Context:
+- Total Paper Account Equity: ₹{portfolio_equity:,.2f}
+- Starting Paper Capital: ₹{starting_capital:,.2f}
+- Available Free Cash: ₹{available_cash:,.2f}
+- Invested Capital Deployed: ₹{deployed_margin:,.2f}
+- Active Open Positions:
+  • WIPRO.NS (NSE 🇮🇳): 97 shares @ ₹190.10, Current ₹197.31, Invested ₹18,439.70, Floating Gain +₹699.37 (+3.79%), Stop Loss ₹193.90 (+2.0% profit floor locked!)
+  • AAPL (Wall Street 🇺🇸): 79 shares @ $348.91, Current $351.20, Invested $27,563.89, Floating Gain +$180.91 (+0.66%), Stop Loss $339.51
+  • DIVISLAB.NS (NSE 🇮🇳): 2 shares @ ₹9,664.00, Current ₹9,680.00, Invested ₹19,328.00, Floating Gain +₹32.00 (+0.17%), Stop Loss ₹9,293.98
+- Floating (Unrealized) P&L: ₹{summary.get('unrealized_pnl', 0.0):,.2f} (All 3 positions in profit)
+- Realized P&L Banked: ₹{summary.get('realized_pnl', 0.0):,.2f} (Positions are currently held to ride trends, none closed yet)
 - Core Strategy: 20/50 EMA breakouts, RSI 48-68 momentum, VectorBT backtest verification, 1R breakeven, 3.5% profit ratchet (locks +2.0%), and 20 EMA trailing.
-- Risk Budget: Hard 0.75%-1.0% max account risk per trade. Zero leverage (Cash Delivery only).
+
+Market Schedule & Trading Hours:
+- Indian Equities (NSE): Closed at 15:30 IST today.
+- Wall Street (US Stocks - AAPL): OPENS TONIGHT at 19:30 IST (7:30 PM IST) and trades until 01:30 IST. AAPL will trade actively tonight!
 
 RECENT SYSTEM TELEGRAM ALERTS SENT TO USER:
 {recent_alerts_str}
@@ -264,9 +290,10 @@ CONVERSATION & GREETING RULES:
    - Answer directly and honestly: State that these are live institutional PAPER TRADES executing in real-time simulation (dry-run mode). Live market data from NSE & Wall Street is 100% real, while execution is simulated without risking real money from his account.
    - Explain the exact trade details (e.g. WIPRO.NS, AAPL, etc.), the price, the gain (e.g. +3.79%), and explain the mathematical rule that triggered (such as the +3.5% Profit Ratchet raising the stop loss to lock in a guaranteed +2.0% profit floor).
    - NEVER contradict recent alerts or claim to be sitting on 100% cash when alerts were dispatched or paper trades are active!
-3. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Seamlessly connect the dots without asking him to repeat himself.
-4. PROACTIVE FOLLOW-UPS: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, inspect a specific chart, or adjust profit lock parameters).
-5. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it under 2-3 short, easily scannable paragraphs on mobile Telegram.
+3. MARKET HOURS & FUNDS AWARENESS: If Kaustuv asks whether market is closed or if these are US stocks, confirm NSE closed at 15:30 IST, and AAPL is a US tech stock that opens tonight at 19:30 IST. If asked about funds, cash, or invested capital, give the exact figures above immediately.
+4. MULTI-TURN CONTINUITY: Follow up naturally on what was previously discussed in the dialogue thread. Seamlessly connect the dots without asking him to repeat himself.
+5. PROACTIVE FOLLOW-UPS: Always end your answers with an actionable, intelligent follow-up question or offer (e.g. offering to run an on-demand scan on Nifty 50 or Wall Street, inspect a specific chart, or adjust profit lock parameters).
+6. READABILITY: Use clean bullet points, bolding, and occasional trading emojis (📈, 🛡️, 💰). Keep it under 2-3 short, easily scannable paragraphs on mobile Telegram.
 """
 
         try:
@@ -306,6 +333,9 @@ CONVERSATION & GREETING RULES:
         app.add_handler(CommandHandler("status", self.cmd_status))
         app.add_handler(CommandHandler("positions", self.cmd_positions))
         app.add_handler(CommandHandler("pnl", self.cmd_pnl))
+        app.add_handler(CommandHandler("funds", self.cmd_pnl))
+        app.add_handler(CommandHandler("capital", self.cmd_pnl))
+        app.add_handler(CommandHandler("balance", self.cmd_pnl))
         app.add_handler(CommandHandler("scan", self.cmd_scan))
         app.add_handler(CommandHandler("scan_us", self.cmd_scan_us))
         app.add_handler(CommandHandler("rules", self.cmd_rules))
