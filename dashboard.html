@@ -189,7 +189,7 @@
             <h2 class="text-sm font-semibold text-white tracking-tight flex items-center gap-2">
               <i class="fa-solid fa-chart-candlestick text-emerald-400"></i> Interactive Candlestick Charts
             </h2>
-            <span class="text-[10px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2 py-0.5 rounded mono">TradingView Advanced</span>
+            <span class="text-[10px] bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-2 py-0.5 rounded mono">Lightweight Candlestick Engine</span>
           </div>
           <p class="text-[11px] text-zinc-500 mt-0.5">Live technical price action with institutional trailing profit ratchets</p>
         </div>
@@ -249,8 +249,8 @@
       </div>
 
       <!-- TradingView Embed Container -->
-      <div class="h-[420px] w-full rounded-lg overflow-hidden border border-zinc-800/80 bg-black">
-        <div id="tradingview_embed_box" class="w-full h-full"></div>
+      <div class="h-[420px] w-full rounded-lg overflow-hidden border border-zinc-800/80 bg-black relative">
+        <div id="tradingview_embed_box" class="w-full h-[420px]" style="min-height: 420px;"></div>
       </div>
     </div>
   </section>
@@ -529,6 +529,17 @@
       container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-xs mono gap-2"><i class="fa-solid fa-circle-notch fa-spin text-white"></i> Loading live candlesticks for ' + ticker + '...</div>';
 
       try {
+        if (typeof LightweightCharts === 'undefined') {
+          let attempts = 0;
+          while (typeof LightweightCharts === 'undefined' && attempts < 25) {
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
+          }
+          if (typeof LightweightCharts === 'undefined') {
+            throw new Error('LightweightCharts library is still loading or blocked. Please refresh.');
+          }
+        }
+
         const res = await fetch(`/api/chart-data?ticker=${encodeURIComponent(ticker)}`);
         const data = await res.json();
         if (data.status !== 'SUCCESS' || !data.candles || data.candles.length === 0) {
@@ -539,9 +550,12 @@
         container.innerHTML = '';
         currentPriceLines = [];
 
+        const width = container.clientWidth || container.offsetWidth || 800;
+        const height = container.clientHeight || container.offsetHeight || 420;
+
         const chart = LightweightCharts.createChart(container, {
-          width: container.clientWidth,
-          height: container.clientHeight || 420,
+          width: width,
+          height: height,
           layout: {
             background: { type: 'solid', color: '#09090b' },
             textColor: '#a1a1aa',
@@ -751,16 +765,12 @@
       await loadRules();
       await loadTrades();
     }
-      await loadStatus();
-      await loadRules();
-      await loadTrades();
-    }
 
     async function loadStatus() {
       try {
         const res = await fetch('/api/status');
         const data = await res.json();
-        const realized = data.daily_pnl || 0.0;
+        const realized = data.total_realized_pnl !== undefined ? data.total_realized_pnl : (data.daily_pnl || 0.0);
         const unrealized = data.unrealized_pnl || 0.0;
         const total = data.total_pnl !== undefined ? data.total_pnl : (realized + unrealized);
         const pnlSign = total >= 0 ? '+' : '';

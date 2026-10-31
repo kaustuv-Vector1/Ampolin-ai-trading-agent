@@ -20,18 +20,27 @@ def build_dynamic_system_prompt(
     now_ist = datetime.now(IST)
     hour = now_ist.hour
     minute = now_ist.minute
-    weekday = now_ist.weekday()  # Mon=0, Fri=4
+    weekday = now_ist.weekday()  # Mon=0, Fri=4, Sat=5, Sun=6
 
     # Determine NSE session status
     if weekday < 5 and (hour > 9 or (hour == 9 and minute >= 15)) and (hour < 15 or (hour == 15 and minute <= 30)):
         nse_status = f"🟢 OPEN & ACTIVELY TRADING (09:15 - 15:30 IST) | Current Time: {now_ist.strftime('%H:%M:%S IST')}"
+    elif weekday >= 5:
+        nse_status = f"🔴 CLOSED FOR WEEKEND (Re-opens Monday 09:15 IST) | Current Time: {now_ist.strftime('%H:%M:%S IST')}"
     else:
-        nse_status = f"🔴 CLOSED (Trading hours: 09:15 - 15:30 IST Mon-Fri) | Current Time: {now_ist.strftime('%H:%M:%S IST')}"
+        nse_status = f"🔴 CLOSED FOR THE DAY (Trading hours: 09:15 - 15:30 IST Mon-Fri) | Current Time: {now_ist.strftime('%H:%M:%S IST')}"
 
     # Determine US / Wall Street session status (19:30 - 01:30 IST)
-    is_us_open = (weekday < 5 and (hour > 19 or (hour == 19 and minute >= 30) or hour >= 20)) or (weekday <= 5 and hour in (0, 1))
+    # Mon-Fri evenings 19:30 - 23:59 IST
+    is_us_open_eve = (0 <= weekday <= 4) and (hour > 19 or (hour == 19 and minute >= 30))
+    # Tue-Sat post-midnight 00:00 - 01:30 IST
+    is_us_open_night = (1 <= weekday <= 5) and (hour == 0 or (hour == 1 and minute <= 30))
+    is_us_open = is_us_open_eve or is_us_open_night
+
     if is_us_open:
         us_status = f"🟢 OPEN & ACTIVELY TRADING RIGHT NOW! (Session: 19:30 - 01:30 IST) | Current Time: {now_ist.strftime('%H:%M:%S IST')} | Wall Street is LIVE!"
+    elif weekday >= 5 or (weekday == 4 and hour >= 2):
+        us_status = f"🔴 CLOSED FOR WEEKEND (Closed Saturday 01:30 IST; Re-opens Monday 19:30 IST) | Current Time: {now_ist.strftime('%H:%M:%S IST')}"
     elif hour < 19 or (hour == 19 and minute < 30):
         us_status = f"🟡 OPENS TONIGHT at 19:30 IST (7:30 PM IST) | Current Time: {now_ist.strftime('%H:%M:%S IST')}"
     else:
@@ -67,7 +76,7 @@ def build_dynamic_system_prompt(
 
         line = f"  • {ticker} ({flag}): {qty} shares @ {sym}{entry:,.2f} | Current Live Price: {sym}{curr:,.2f} (P&L: {gain_pct:+.2f}%, {sym}{pnl:+,.2f}) | Protective SL: {sym}{sl:,.2f} | Stage: {stage}"
         if t.get("partial_exit_taken"):
-            line += f" -> [STATUS: 50% partial profit target hit! 48 shares were sold to bank profit, remaining {qty} shares are trailing 20 EMA]"
+            line += f" -> [STATUS: 50% partial profit target hit! 48 shares were sold @ ₹198.31 to bank profit; remaining {qty} shares are trailing 20 EMA with zero downside risk]"
         elif stage == "STAGE_PROFIT_LOCKED":
             line += " -> [STATUS: +2.0% profit floor locked]"
         elif stage == "STAGE_BREAKEVEN":
@@ -121,9 +130,13 @@ Active Open Positions ({len(open_trades)}):
 Closed & Realized Trades (Sold Positions):
 {closed_trades_str}
 
-Wall Street Market Intelligence Tonight:
-- Wall Street session is in active trading right now.
-- Why no other US stocks were bought tonight: Our scanner scanned all 20 mega-cap US stocks (NVDA, GOOGL, META, AMZN, AMD, PLTR...). Most of Big Tech experienced a broad pullback with price below their 20 and 50 EMAs and RSI below 40. Ampolin's institutional rules strictly forbid buying falling knives. TSLA was up (+3.3% above 20 EMA) but was rejected by our 2.2% anti-chasing rule to prevent buying tops. AAPL is held and protected.
+Wall Street & Market Execution Intelligence:
+- Current Wall Street Session: {us_status}
+- Exactly Why No New US Orders Executed Last Night: Our autonomous scanner scanned all 20 mega-cap US stocks (NVDA, MSFT, AMZN, GOOGL, META, TSLA, AMD, PLTR...). Yesterday, Big Tech experienced a broad-market tech selloff across Nasdaq: NVDA (-7.2% below 20 EMA, RSI 33.5), GOOGL (-14.7% below 20 EMA, RSI 20.9), META (-8.1%), AMZN (-5.3%), and AMD (-10.5%) all traded below their 20/50 EMAs with oversold RSIs under 40. Ampolin's institutional rules strictly forbid buying falling knives. TSLA was up (+3.3% above 20 EMA) but was rejected by our 2.2% anti-chasing rule to prevent buying tops. Our capital preservation filters protected our money from entering losing tech trades!
+- What We Are Going to Buy Next (Active Watchlist):
+  • NSE (Next session Monday 09:15 IST): Scanning liquid Nifty 50 leaders approaching fresh 20/50 EMA golden crosses or pullbacks to the 20 EMA (Reliance, TCS, HDFC Bank, Trent, BEL).
+  • Wall Street (Next session Monday 19:30 IST): Watching for tech bounce and stabilization in NVDA, MSFT, and AMZN reclaiming their 20 EMAs with bullish RSI (48-68), plus tracking AAPL toward its $367.71 target.
+  • Free Liquid Cash: We have ₹{available_cash:,.2f} in free cash ready to deploy the instant a stock passes all 5 VectorBT & Gemini criteria!
 
 RECENT NOTIFICATIONS DISPATCHED TO USER:
 {recent_alerts_str}
@@ -131,13 +144,19 @@ RECENT NOTIFICATIONS DISPATCHED TO USER:
 CONVERSATION & GREETING RULES:
 1. {greeting_rule}
 2. KNOW YOUR TRADES & SALES:
-   - When asked what we hold or what was sold: State accurately that we SOLD 48 shares of WIPRO.NS @ ₹198.31, banking +₹394.08 in realized profit, and are currently holding the remaining 49 shares trailing the 20 EMA! We also hold AAPL (79 shares) and DIVISLAB.NS (2 shares).
+   - When asked what we bought: State clearly:
+     • WIPRO.NS: 97 shares bought @ ₹190.10 (NSE)
+     • DIVISLAB.NS: 2 shares bought @ ₹9,664.00 (NSE)
+     • AAPL: 79 shares bought @ $348.91 (Wall Street US)
+   - When asked what we sold: State clearly:
+     • WIPRO.NS: Sold 48 shares (50% partial exit) @ ₹198.31 when it hit its +2.0R target (+4.32%), safely banking +₹394.08 in realized cash profit! The remaining 49 shares are open and trailing the 20 EMA with stop loss at entry (₹190.10), making the trade 100% risk-free!
+   - When asked why no new Wall Street orders executed: Explain the tech pullback context above (protecting capital from falling knives like NVDA/GOOGL/META).
+   - When asked what we are buying next: Share the active watchlist and criteria above.
    - Realized P&L is +₹{realized_pnl:,.2f} banked, NOT ₹0.00!
 3. MARKET HOURS AWARENESS:
-   - Know that Wall Street is OPEN and active right now ({us_status}). NEVER say Wall Street opens tonight if it is already after 19:30 IST!
-   - NSE is closed for the day and reopens at 09:15 IST.
+   - Understand the current live time ({now_ist.strftime('%A, %H:%M:%S IST')}). NSE is closed for the weekend (reopens Monday 09:15 IST). Wall Street closed its Friday session at 01:30 IST and reopens Monday 19:30 IST.
 4. CAPITAL PROTECTION GUARANTEES:
    - Reassure Kaustuv that 6 mathematical circuit breakers prevent any dumping: 20% max per stock, 15% cash reserve floor, 4 max positions, 3% daily loss kill-switch, single-share veto, and zero leverage CNC delivery.
-5. READABILITY: Use clear bullet points, bold key prices and P&L numbers, and keep responses concise and institutional.
+5. READABILITY: Use clear bullet points, bold key prices and P&L numbers, and keep responses concise, transparent, and institutional.
 """
     return prompt.strip()

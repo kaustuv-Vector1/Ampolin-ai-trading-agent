@@ -36,6 +36,7 @@ from main import AmpolinPipeline
 from llm_client import MultiProviderLLM
 from prompt_context import build_dynamic_system_prompt
 import yfinance as yf
+import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("AmpolinUI")
@@ -161,9 +162,10 @@ def get_system_status():
     starting_capital = 100000.0
     deployed_margin = sum(float(t.get("capital_allocated") or 0.0) for t in open_trades)
     realized_pnl = summary.get("realized_pnl", 0.0)
+    total_realized_pnl = summary.get("total_realized_pnl", realized_pnl)
     unrealized_pnl = summary.get("unrealized_pnl", 0.0)
-    total_pnl = summary.get("total_pnl", 0.0)
-    available_cash = round(starting_capital - deployed_margin + realized_pnl, 2)
+    total_pnl = round(total_realized_pnl + unrealized_pnl, 2)
+    available_cash = round(starting_capital - deployed_margin + total_realized_pnl, 2)
     portfolio_equity = round(starting_capital + total_pnl, 2)
 
     return {
@@ -175,6 +177,7 @@ def get_system_status():
         "portfolio_equity": portfolio_equity,
         "open_positions": len(open_trades),
         "daily_pnl": realized_pnl,
+        "total_realized_pnl": total_realized_pnl,
         "unrealized_pnl": unrealized_pnl,
         "total_pnl": total_pnl,
         "win_rate": summary.get("win_rate", 0.0),
@@ -323,30 +326,38 @@ def get_chart_data(ticker: str = Query(..., description="Ticker symbol")):
         elif clean_ticker.startswith("NASDAQ:"):
             alt_ticker = clean_ticker.replace("NASDAQ:", "")
 
-        df = yf.download(alt_ticker, period="6mo", interval="1d", progress=False, multi_level_index=False)
+        df = yf.download(alt_ticker, period="6mo", interval="1d", progress=False)
         if df.empty or len(df) < 3:
-            df = yf.download(clean_ticker, period="6mo", interval="1d", progress=False, multi_level_index=False)
+            df = yf.download(clean_ticker, period="6mo", interval="1d", progress=False)
 
         if df.empty:
             return JSONResponse({"status": "ERROR", "message": f"No data found for {ticker}"}, status_code=404)
 
+        # Flatten multi-level columns from modern yfinance
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
         candles = []
         for idx, row in df.iterrows():
             date_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
-            open_val = float(row.get("Open") or row.get("open") or 0.0)
-            high_val = float(row.get("High") or row.get("high") or 0.0)
-            low_val = float(row.get("Low") or row.get("low") or 0.0)
-            close_val = float(row.get("Close") or row.get("close") or 0.0)
-            vol_val = float(row.get("Volume") or row.get("volume") or 0.0)
-            if open_val > 0 and high_val > 0 and low_val > 0 and close_val > 0:
-                candles.append({
-                    "time": date_str,
-                    "open": round(open_val, 2),
-                    "high": round(high_val, 2),
-                    "low": round(low_val, 2),
-                    "close": round(close_val, 2),
-                    "volume": round(vol_val, 0)
-                })
+            try:
+                open_val = float(row["Open"]) if "Open" in row and not pd.isna(row["Open"]) else 0.0
+                high_val = float(row["High"]) if "High" in row and not pd.isna(row["High"]) else 0.0
+                low_val = float(row["Low"]) if "Low" in row and not pd.isna(row["Low"]) else 0.0
+                close_val = float(row["Close"]) if "Close" in row and not pd.isna(row["Close"]) else 0.0
+                vol_val = float(row["Volume"]) if "Volume" in row and not pd.isna(row["Volume"]) else 0.0
+
+                if open_val > 0 and high_val > 0 and low_val > 0 and close_val > 0:
+                    candles.append({
+                        "time": date_str,
+                        "open": round(open_val, 2),
+                        "high": round(high_val, 2),
+                        "low": round(low_val, 2),
+                        "close": round(close_val, 2),
+                        "volume": round(vol_val, 0)
+                    })
+            except Exception:
+                continue
 
         return {
             "status": "SUCCESS",
