@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "timestamp": "2026-10-31T12:04:05.128930",
+  "timestamp": "2026-10-31T13:12:28.630783",
   "open_positions_count": 2,
   "total_trades_count": 4,
   "trades": [
@@ -28,7 +28,11 @@
       "initial_quantity": 2,
       "stage": "STAGE_INITIAL",
       "partial_exit_taken": 0,
-      "current_price": 9780.0
+      "current_price": 9780.0,
+      "one_r": 370.02,
+      "broker_sl_order_id": null,
+      "broker_sl_price": null,
+      "broker_sl_qty": null
     },
     {
       "id": 2,
@@ -39,7 +43,7 @@
       "stop_loss": 190.1,
       "take_profit": 205.42,
       "quantity": 49,
-      "capital_allocated": 18439.7,
+      "capital_allocated": 9314.9,
       "risk_amount": 743.02,
       "status": "CLOSED",
       "exit_price": 198.31,
@@ -54,7 +58,11 @@
       "initial_quantity": 97,
       "stage": "STAGE_PARTIAL_BOOKED",
       "partial_exit_taken": 1,
-      "current_price": 198.31
+      "current_price": 198.31,
+      "one_r": 7.66,
+      "broker_sl_order_id": null,
+      "broker_sl_price": null,
+      "broker_sl_qty": null
     },
     {
       "id": 3,
@@ -80,7 +88,11 @@
       "initial_quantity": 79,
       "stage": "STAGE_INITIAL",
       "partial_exit_taken": 0,
-      "current_price": 343.59
+      "current_price": 343.59,
+      "one_r": 9.4,
+      "broker_sl_order_id": null,
+      "broker_sl_price": null,
+      "broker_sl_qty": null
     },
     {
       "id": 4,
@@ -95,8 +107,8 @@
       "risk_amount": 0.0,
       "status": "CLOSED",
       "exit_price": 198.31,
-      "pnl": 699.37,
-      "pnl_percentage": 3.79,
+      "pnl": 394.08,
+      "pnl_percentage": 4.32,
       "confidence": 0.85,
       "rationale": "Booked 50% partial profit at 2.0R target (48 shares @ \u20b9198.31). Remaining 49 shares trailing 20 EMA.",
       "entry_time": "2026-10-29 23:43:59",
@@ -106,7 +118,11 @@
       "initial_quantity": 48,
       "stage": "STAGE_PARTIAL_BOOKED",
       "partial_exit_taken": 1,
-      "current_price": 197.31
+      "current_price": 197.31,
+      "one_r": 7.66,
+      "broker_sl_order_id": null,
+      "broker_sl_price": null,
+      "broker_sl_qty": null
     }
   ],
   "daily_pnl": [
@@ -118,7 +134,7 @@
       "total_trades": 4,
       "win_count": 2,
       "loss_count": 0,
-      "updated_at": "2026-10-31T11:58:54.390055"
+      "updated_at": "2026-10-31T12:04:07.001153"
     },
     {
       "date": "2026-10-30",

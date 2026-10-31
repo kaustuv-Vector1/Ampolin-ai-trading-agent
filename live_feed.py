@@ -84,9 +84,9 @@ class LiveMarketFeed:
         self.latest_prices: Dict[str, float] = {}
         self._thread: Optional[threading.Thread] = None
 
-    def _resolve_security_id(self, ticker: str) -> str:
-        clean = ticker.replace(".NS", "").upper()
-        return NIFTY_SECURITY_ID_MAP.get(clean, "1333")
+    def _resolve_security_id(self, ticker: str) -> Optional[str]:
+        from broker import resolve_security_id
+        return resolve_security_id(ticker)
 
     def on_tick_received(self, ticker: str, ltp: float):
         """

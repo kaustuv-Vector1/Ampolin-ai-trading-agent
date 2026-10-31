@@ -30,7 +30,13 @@ logger = logging.getLogger("AmpolinReflection")
 class TradeLogger:
     def __init__(self, db_path: Path = DB_PATH):
         self.db_path = db_path
-        self.backup_mgr = StateBackupManager(db_path=self.db_path)
+        if self.db_path != DB_PATH:
+            self.backup_mgr = StateBackupManager(
+                db_path=self.db_path,
+                snapshot_path=self.db_path.parent / "portfolio_state_snapshot.json"
+            )
+        else:
+            self.backup_mgr = StateBackupManager(db_path=self.db_path)
         self._init_db()
         # Ensure fresh snapshot is synced
         try:
@@ -60,6 +66,7 @@ class TradeLogger:
                     take_profit REAL NOT NULL,
                     quantity INTEGER NOT NULL,
                     initial_quantity INTEGER,
+                    one_r REAL,
                     capital_allocated REAL NOT NULL,
                     risk_amount REAL NOT NULL,
                     status TEXT NOT NULL,
@@ -80,19 +87,28 @@ class TradeLogger:
             # Add columns if migrating an existing DB
             cursor.execute("PRAGMA table_info(trades)")
             cols = [c[1] for c in cursor.fetchall()]
-            if "initial_quantity" not in cols:
-                cursor.execute("ALTER TABLE trades ADD COLUMN initial_quantity INTEGER")
-            if "stage" not in cols:
-                cursor.execute("ALTER TABLE trades ADD COLUMN stage TEXT DEFAULT 'STAGE_INITIAL'")
-            if "partial_exit_taken" not in cols:
-                cursor.execute("ALTER TABLE trades ADD COLUMN partial_exit_taken INTEGER DEFAULT 0")
-            if "current_price" not in cols:
-                cursor.execute("ALTER TABLE trades ADD COLUMN current_price REAL")
+            for col_name, col_type in [
+                ("initial_quantity", "INTEGER"),
+                ("stage", "TEXT DEFAULT 'STAGE_INITIAL'"),
+                ("partial_exit_taken", "INTEGER DEFAULT 0"),
+                ("current_price", "REAL"),
+                ("pnl", "REAL DEFAULT 0.0"),
+                ("pnl_percentage", "REAL DEFAULT 0.0"),
+                ("one_r", "REAL"),
+                ("broker_sl_order_id", "TEXT"),
+                ("broker_sl_price", "REAL"),
+                ("broker_sl_qty", "INTEGER"),
+            ]:
+                if col_name not in cols:
+                    cursor.execute(f"ALTER TABLE trades ADD COLUMN {col_name} {col_type}")
 
             # Backfill verified live prices and floating P&L if null
             cursor.execute("UPDATE trades SET current_price = 197.31, pnl = 699.37, pnl_percentage = 3.79 WHERE ticker = 'WIPRO.NS' AND (current_price IS NULL OR current_price = 0)")
             cursor.execute("UPDATE trades SET current_price = 9680.00, pnl = 32.00, pnl_percentage = 0.17 WHERE ticker = 'DIVISLAB.NS' AND (current_price IS NULL OR current_price = 0)")
             cursor.execute("UPDATE trades SET current_price = 351.20, pnl = 180.91, pnl_percentage = 0.66 WHERE ticker = 'AAPL' AND (current_price IS NULL OR current_price = 0)")
+            cursor.execute("UPDATE trades SET one_r = 7.66 WHERE ticker LIKE '%WIPRO%' AND (one_r IS NULL OR one_r = 0)")
+            cursor.execute("UPDATE trades SET one_r = round(abs(entry_price - stop_loss), 4) WHERE (one_r IS NULL OR one_r = 0) AND entry_price != stop_loss")
+            cursor.execute("UPDATE trades SET one_r = round(abs(take_profit - entry_price) / 2.0, 4) WHERE (one_r IS NULL OR one_r = 0)")
             conn.commit()
 
             # If fresh database (e.g. initial boot on Cloud Run), restore from snapshot or seed
@@ -109,19 +125,19 @@ class TradeLogger:
                     now_str = datetime.now().isoformat()
                     # Open positions (WIPRO has 49 shares remaining after 50% partial exit at 2R)
                     initial_trades = [
-                        ("SIM-DHAN-20261029234359-WIPRO", "WIPRO.NS", "BUY", 190.10, 190.10, 205.42, 49, 97, 9314.90, 743.02, "SIMULATED_FILLED", "STAGE_PARTIAL_BOOKED", 1, 0.78, "20/50 EMA breakout. 50% profit booked at 2R target; remaining 49 shares trailing 20 EMA.", 198.31, 402.29, 4.32, now_str, None),
-                        ("SIM-DHAN-20261029234345-DIVISLAB", "DIVISLAB.NS", "BUY", 9664.00, 9293.98, 10404.03, 2, 2, 19328.00, 740.04, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.75, "High-momentum pharma breakout with 1:2 R:R", 9780.00, 232.00, 1.20, now_str, None),
-                        ("SIM-DHAN-20261030151823-AAPL", "AAPL", "BUY", 348.91, 339.51, 367.71, 79, 79, 27563.89, 742.60, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.78, "Wall Street mega-cap momentum breakout verified by VectorBT 62.5% win rate", 342.99, -467.68, -1.70, now_str, None),
-                        ("SIM-DHAN-20261029234359-WIPRO-PARTIAL-1", "WIPRO.NS", "SELL", 190.10, 190.10, 198.31, 48, 48, 9124.80, 0, "CLOSED", "STAGE_PARTIAL_BOOKED", 1, 0.85, "Booked 50% partial profit at 2.0R target (48 shares @ ₹198.31).", 198.31, 394.08, 4.32, now_str, now_str),
+                        ("SIM-DHAN-20261029234359-WIPRO", "WIPRO.NS", "BUY", 190.10, 190.10, 205.42, 49, 97, 7.66, 9314.90, 743.02, "SIMULATED_FILLED", "STAGE_PARTIAL_BOOKED", 1, 0.78, "20/50 EMA breakout. 50% profit booked at 2R target; remaining 49 shares trailing 20 EMA.", 198.31, 402.29, 4.32, now_str, None),
+                        ("SIM-DHAN-20261029234345-DIVISLAB", "DIVISLAB.NS", "BUY", 9664.00, 9293.98, 10404.03, 2, 2, 370.02, 19328.00, 740.04, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.75, "High-momentum pharma breakout with 1:2 R:R", 9780.00, 232.00, 1.20, now_str, None),
+                        ("SIM-DHAN-20261030151823-AAPL", "AAPL", "BUY", 348.91, 339.51, 367.71, 79, 79, 9.40, 27563.89, 742.60, "SIMULATED_FILLED", "STAGE_INITIAL", 0, 0.78, "Wall Street mega-cap momentum breakout verified by VectorBT 62.5% win rate", 342.99, -467.68, -1.70, now_str, None),
+                        ("SIM-DHAN-20261029234359-WIPRO-PARTIAL-1", "WIPRO.NS", "SELL", 190.10, 190.10, 198.31, 48, 48, 7.66, 9124.80, 0, "CLOSED", "STAGE_PARTIAL_BOOKED", 1, 0.85, "Booked 50% partial profit at 2.0R target (48 shares @ ₹198.31).", 198.31, 394.08, 4.32, now_str, now_str),
                     ]
                     for t in initial_trades:
                         cursor.execute("""
                             INSERT INTO trades (
                                 order_id, ticker, action, entry_price, stop_loss, take_profit,
-                                quantity, initial_quantity, capital_allocated, risk_amount,
+                                quantity, initial_quantity, one_r, capital_allocated, risk_amount,
                                 status, stage, partial_exit_taken, confidence, rationale,
                                 current_price, pnl, pnl_percentage, entry_time, exit_time, is_paper_trade
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                         """, t)
                     conn.commit()
 
@@ -170,15 +186,19 @@ class TradeLogger:
             "raw_response": order.raw_response,
         }
 
+        one_r = round(abs(order.entry_price - order.stop_loss), 4)
+        if one_r <= 0:
+            one_r = round(order.entry_price * 0.02, 4)
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
                 INSERT INTO trades (
                     order_id, ticker, action, entry_price, stop_loss, take_profit,
-                    quantity, initial_quantity, capital_allocated, risk_amount, status,
+                    quantity, initial_quantity, one_r, capital_allocated, risk_amount, status,
                     stage, partial_exit_taken, confidence, rationale, entry_time, is_paper_trade, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     order.order_id,
@@ -189,6 +209,7 @@ class TradeLogger:
                     order.take_profit,
                     order.quantity,
                     order.quantity,
+                    one_r,
                     order.capital_allocated,
                     order.total_risk_amount,
                     order.status,
@@ -269,17 +290,22 @@ class TradeLogger:
                 return False
 
             entry_price = float(row["entry_price"])
+            current_sl = float(row["stop_loss"] or entry_price)
+            # Stops may strictly only move UP, never down
+            safe_trailing_sl = max(trailing_sl, current_sl)
             ticker = row["ticker"]
             pnl_pct = ((exit_price - entry_price) / entry_price) * 100.0
 
-            # 1. Update remaining open position
+            # 1. Update remaining open position with remaining quantity and remaining invested capital only
+            remaining_capital = round(entry_price * remaining_shares, 2)
+            remaining_unrealized_pnl = round((exit_price - entry_price) * remaining_shares, 2)
             cursor.execute(
                 """
                 UPDATE trades
-                SET quantity = ?, stop_loss = ?, stage = 'STAGE_PARTIAL_BOOKED', partial_exit_taken = 1
+                SET quantity = ?, capital_allocated = ?, pnl = ?, stop_loss = ?, stage = 'STAGE_PARTIAL_BOOKED', partial_exit_taken = 1
                 WHERE order_id = ?
                 """,
-                (remaining_shares, trailing_sl, order_id),
+                (remaining_shares, remaining_capital, remaining_unrealized_pnl, safe_trailing_sl, order_id),
             )
 
             # 2. Insert closed partial trade record so realized P&L is permanently recorded in DB
@@ -294,7 +320,7 @@ class TradeLogger:
                 ) VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?, ?, 0, 'CLOSED', 'STAGE_PARTIAL_BOOKED', 1, ?, ?, ?, 0.85, ?, ?, ?, 1)
                 """,
                 (
-                    partial_order_id, ticker, entry_price, trailing_sl, exit_price,
+                    partial_order_id, ticker, entry_price, safe_trailing_sl, exit_price,
                     shares_sold, shares_sold, round(entry_price * shares_sold, 2),
                     exit_price, booked_pnl, round(pnl_pct, 2),
                     f"Booked 50% partial profit at 2.0R target ({shares_sold} shares @ ₹{exit_price:.2f}). Remaining {remaining_shares} shares trailing 20 EMA.",
@@ -321,6 +347,21 @@ class TradeLogger:
             )
             conn.commit()
             logger.info(f"Trade {order_id} stop loss updated to ₹{new_stop_loss:.2f} ({new_stage})")
+        try:
+            self.backup_mgr.create_snapshot()
+        except Exception:
+            pass
+        return True
+
+    def update_broker_sl(self, order_id: str, sl_order_id: Optional[str], sl_price: float, sl_qty: int) -> bool:
+        """Persists broker-side stop loss order ID and parameters directly to SQLite."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE trades SET broker_sl_order_id = ?, broker_sl_price = ?, broker_sl_qty = ? WHERE order_id = ?",
+                (sl_order_id, round(sl_price, 2), sl_qty, order_id),
+            )
+            conn.commit()
         try:
             self.backup_mgr.create_snapshot()
         except Exception:
@@ -406,18 +447,30 @@ class TradeLogger:
             cursor.execute("SELECT * FROM trades WHERE status = 'CLOSED' AND (exit_time LIKE ? OR exit_time IS NULL)", (f"{d_str}%",))
             today_closed_trades = [dict(row) for row in cursor.fetchall()]
 
-            realized_pnl = sum(float(t.get("pnl") or 0.0) for t in today_closed_trades)
-            total_realized_pnl = sum(float(t.get("pnl") or 0.0) for t in all_closed_trades)
+            from market_hours import get_usd_inr_rate
+            usd_rate = get_usd_inr_rate()
 
-            # Unrealized (floating) P&L for open positions
+            realized_pnl = 0.0
+            for t in today_closed_trades:
+                pnl_val = float(t.get("pnl") or 0.0)
+                is_usd = not t["ticker"].endswith(".NS") and not t["ticker"].endswith(".BO")
+                realized_pnl += (pnl_val * usd_rate) if is_usd else pnl_val
+
+            total_realized_pnl = 0.0
+            for t in all_closed_trades:
+                pnl_val = float(t.get("pnl") or 0.0)
+                is_usd = not t["ticker"].endswith(".NS") and not t["ticker"].endswith(".BO")
+                total_realized_pnl += (pnl_val * usd_rate) if is_usd else pnl_val
+
+            # Unrealized (floating) P&L for open positions (converted to INR for unified risk/equity)
             unrealized_pnl = 0.0
             for t in open_trades:
                 entry = float(t.get("entry_price") or 0.0)
                 curr = float(t.get("current_price") or entry)
                 qty = int(t.get("quantity") or 0)
-                # Calculate gain
                 gain = (curr - entry) * qty
-                unrealized_pnl += gain
+                is_usd = not t["ticker"].endswith(".NS") and not t["ticker"].endswith(".BO")
+                unrealized_pnl += (gain * usd_rate) if is_usd else gain
 
             total_pnl = realized_pnl + unrealized_pnl
 

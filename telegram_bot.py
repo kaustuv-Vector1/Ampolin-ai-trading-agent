@@ -127,6 +127,21 @@ class InteractiveTelegramBot:
             gain_pct = ((curr - entry) / entry) * 100.0
             pnl = float(t.get("pnl") or (curr - entry) * qty)
             pnl_sign = "+" if pnl >= 0 else ""
+            pnl_icon = "🟢" if pnl >= 0 else "🔴"
+
+            # Check if this position had a partial exit taken (FIX 3)
+            partial_pnl_line = ""
+            if t.get("partial_exit_taken"):
+                with self.logger._get_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "SELECT pnl FROM trades WHERE order_id LIKE ? AND status = 'CLOSED'",
+                        (f"{t['order_id']}%",),
+                    )
+                    row = cur.fetchone()
+                    if row and row["pnl"] is not None:
+                        part_val = float(row["pnl"])
+                        partial_pnl_line = f"• Realized P&L (Partial): +{sym}{part_val:,.2f}\n"
 
             if stage == "STAGE_PARTIAL_BOOKED":
                 status_icon = "🎯 50% Profit Banked! Remainder Trailing 20 EMA"
@@ -142,7 +157,8 @@ class InteractiveTelegramBot:
                 f"• Invested Capital: {sym}{invested:,.2f}\n"
                 f"• Entry: {sym}{entry:,.2f} | <b>Live Price: {sym}{curr:,.2f}</b>\n"
                 f"• Current Value: {sym}{current_val:,.2f}\n"
-                f"• <b>Unrealized P&L: {pnl_sign}{gain_pct:.2f}% ({pnl_sign}{sym}{pnl:,.2f})</b> 🟢\n"
+                f"• <b>Unrealized P&L: {pnl_sign}{gain_pct:.2f}% ({pnl_sign}{sym}{pnl:,.2f})</b> {pnl_icon}\n"
+                f"{partial_pnl_line}"
                 f"• Stop Loss: {sym}{float(t['stop_loss']):,.2f} | Target: {sym}{float(t['take_profit']):,.2f}\n"
                 f"• Strategy Status: <code>{status_icon}</code>\n"
             )
@@ -160,16 +176,24 @@ class InteractiveTelegramBot:
         total = summary.get("total_pnl", 0.0)
 
         starting_capital = 100000.0
-        deployed_margin = sum(float(t.get("capital_allocated") or 0.0) for t in open_trades)
+        from market_hours import get_usd_inr_rate, is_us_market_open, is_nse_market_open, NY_TZ
+        usd_rate = get_usd_inr_rate()
+        deployed_margin = 0.0
+        for t in open_trades:
+            cap = float(t.get("capital_allocated") or 0.0)
+            is_usd = not t["ticker"].endswith(".NS") and not t["ticker"].endswith(".BO")
+            deployed_margin += (cap * usd_rate) if is_usd else cap
+
         available_cash = round(starting_capital - deployed_margin + realized, 2)
         portfolio_equity = round(starting_capital + total, 2)
 
         pnl_sign = "+" if total >= 0 else ""
         icon = "🟢" if total >= 0 else "🔴"
+        unrealized_icon = "🟢" if unrealized >= 0 else "🔴"
 
-        now_ist = datetime.now(pytz.timezone("Asia/Kolkata"))
-        is_us_open = (now_ist.weekday() < 5 and (now_ist.hour > 19 or (now_ist.hour == 19 and now_ist.minute >= 30) or now_ist.hour >= 20)) or (now_ist.weekday() <= 5 and now_ist.hour in (0, 1))
-        us_status_text = "🟢 Wall Street is LIVE & ACTIVELY TRADING RIGHT NOW 🇺🇸" if is_us_open else "🔴 Wall Street session: 19:30 - 01:30 IST 🇺🇸"
+        now_ny = datetime.now(NY_TZ)
+        is_us_open = is_us_market_open(now_ny)
+        us_status_text = "🟢 Wall Street is LIVE & ACTIVELY TRADING RIGHT NOW 🇺🇸" if is_us_open else "🔴 Wall Street session: 09:30 - 16:00 ET 🇺🇸"
 
         msg = (
             f"💼 <b>AMPOLIN PAPER TRADING FUNDS & P&L</b>\n\n"
@@ -178,13 +202,13 @@ class InteractiveTelegramBot:
             f"• <b>Available Free Cash:</b> <b>₹{available_cash:,.2f}</b>\n"
             f"• <b>Invested Capital Deployed:</b> <b>₹{deployed_margin:,.2f}</b>\n\n"
             f"• <b>Realized P&L (Banked Profit):</b> <b>+₹{realized:,.2f}</b> 💰\n"
-            f"• <b>Unrealized (Open) P&L:</b> {icon} <b>{pnl_sign}₹{unrealized:,.2f}</b> 🟢\n"
+            f"• <b>Unrealized (Open) P&L:</b> {unrealized_icon} <b>{'+' if unrealized >= 0 else ''}₹{unrealized:,.2f}</b>\n"
             f"• <b>Active Positions:</b> {len(open_trades)} stocks\n"
             f"• <b>Win Rate:</b> {summary.get('win_rate', 0.0)*100:.1f}%\n\n"
             f"🕒 <b>Market Status:</b>\n"
-            f"• NSE (India): Closed for the day (09:15 - 15:30 IST)\n"
-            f"• {us_status_text}\n\n"
-            f"💡 <i>Realized profit of +₹{realized:,.2f} is permanently banked (including 50% partial exit on WIPRO @ ₹198.31). Remaining open shares are protected with trailing stops!</i>"
+            f"• NSE (India): {'🟢 Open & Active' if is_nse_market_open() else '🔴 Closed (09:15 - 15:30 IST)'}\n"
+            f"• Wall Street (US): {us_status_text}\n\n"
+            f"💡 <i>Realized profit of +₹{realized:,.2f} is permanently banked. Remaining open shares are protected with trailing stops!</i>"
         )
         await update.message.reply_text(msg, parse_mode="HTML")
 
@@ -360,10 +384,12 @@ class InteractiveTelegramBot:
                     timeout=14.0,
                 )
             except asyncio.TimeoutError:
-                logger.warning("LLM generation timed out after 14s. Providing intelligent fallback.")
+                logger.warning("LLM generation timed out after 14s. Providing dynamic fallback.")
+                open_cnt = len(open_trades)
+                tickers = ", ".join([t["ticker"] for t in open_trades]) if open_trades else "100% Cash Buffer"
                 response_text = (
-                    "⚡ I am currently monitoring all 3 open positions (WIPRO.NS +3.79% profit locked, AAPL, DIVISLAB.NS) "
-                    "with ₹34,668 free cash preserved. What would you like to review (/positions, /rules, /pcr)?"
+                    f"⚡ I am currently monitoring {open_cnt} active positions ({tickers}) "
+                    f"under strict 1% account risk rules. What would you like to review (/positions, /rules, /pcr)?"
                 )
             finally:
                 typing_task.cancel()

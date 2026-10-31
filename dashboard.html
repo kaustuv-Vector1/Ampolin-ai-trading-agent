@@ -128,7 +128,7 @@
         <i class="fa-solid fa-bullseye text-zinc-600 text-xs"></i>
       </div>
       <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-winrate">100.0%</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1">3/3 Positions in Profit</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-winrate-sub">Real-Time Win Rate</div>
     </div>
 
     <div class="fintech-card p-3.5 sm:p-4 rounded-xl col-span-2 md:col-span-1">
@@ -136,8 +136,8 @@
         <span>Active Holdings</span>
         <i class="fa-solid fa-layer-group text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-open-trades">3</div>
-      <div class="text-[10px] sm:text-[11px] text-emerald-400 mt-1">1 Profit Locked (WIPRO)</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-open-trades">0</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-open-trades-sub">1R Breakeven &bull; 3.5% Lock</div>
     </div>
   </div>
 
@@ -614,7 +614,7 @@
       let tvSymbol = ticker;
       const isNse = ticker.endsWith('.NS') || ticker === '^NSEI' || ticker === '^INDIAVIX';
       if (ticker.endsWith('.NS')) {
-        tvSymbol = `NSE:${ticker.replace('.NS', '')}`;
+        tvSymbol = `BSE:${ticker.replace('.NS', '')}`;
       } else if (ticker === '^NSEI') {
         tvSymbol = 'NSE:NIFTY';
       } else if (ticker === '^INDIAVIX') {
@@ -631,29 +631,42 @@
         nseNotice.classList.add('hidden');
       }
 
-      if (typeof TradingView !== 'undefined' && TradingView.widget) {
-        new TradingView.widget({
-          autosize: true,
-          symbol: tvSymbol,
-          interval: "D",
-          timezone: "Asia/Kolkata",
-          theme: "dark",
-          style: "1",
-          locale: "en",
-          toolbar_bg: "#09090b",
-          enable_publishing: false,
-          allow_symbol_change: true, // Allows user to browse ANY stock inside TradingView!
-          hide_side_toolbar: false,
-          withdateranges: true,
-          studies: [
-            "MASimple@tv-basicstudies",
-            "RSI@tv-basicstudies"
-          ],
-          container_id: "tradingview_widget_container"
-        });
-      } else {
-        container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-xs mono gap-2"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading TradingView Engine...</div>';
-      }
+      // Modern TradingView Advanced Real-Time Chart Embed
+      const widgetContainer = document.createElement('div');
+      widgetContainer.className = 'tradingview-widget-container';
+      widgetContainer.style.height = '100%';
+      widgetContainer.style.width = '100%';
+
+      const innerWidgetDiv = document.createElement('div');
+      innerWidgetDiv.className = 'tradingview-widget-container__widget';
+      innerWidgetDiv.style.height = '100%';
+      innerWidgetDiv.style.width = '100%';
+      widgetContainer.appendChild(innerWidgetDiv);
+
+      const script = document.createElement('script');
+      script.type = 'text/javascript';
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+      script.async = true;
+
+      const widgetConfig = {
+        "autosize": true,
+        "symbol": tvSymbol,
+        "interval": "D",
+        "timezone": "Asia/Kolkata",
+        "theme": "dark",
+        "style": "1",
+        "locale": "en",
+        "enable_publishing": false,
+        "allow_symbol_change": true,
+        "calendar": false,
+        "hide_side_toolbar": false,
+        "withdateranges": true,
+        "support_host": "https://www.tradingview.com"
+      };
+
+      script.innerHTML = JSON.stringify(widgetConfig);
+      widgetContainer.appendChild(script);
+      container.appendChild(widgetContainer);
     }
 
     // Universal Stock Search Handler
@@ -1044,6 +1057,24 @@
         const openTrades = (data.trades || []).filter(t => t.status !== 'CLOSED');
         window.lastOpenTrades = openTrades;
 
+        // Dynamically update open positions count & sub-label
+        const openCountEl = document.getElementById('metric-open-trades');
+        if (openCountEl) openCountEl.innerText = openTrades.length;
+        const subEl = document.getElementById('metric-open-trades-sub');
+        if (subEl) {
+          const lockedTrades = openTrades.filter(t => t.stage === 'STAGE_PROFIT_LOCKED' || t.stage === 'STAGE_PARTIAL_BOOKED');
+          if (lockedTrades.length > 0) {
+            subEl.className = 'text-[10px] sm:text-[11px] text-emerald-400 mt-1';
+            subEl.innerText = `${lockedTrades.length} Profit Locked (${lockedTrades.map(t => t.ticker.replace('.NS','')).join(', ')})`;
+          } else if (openTrades.length > 0) {
+            subEl.className = 'text-[10px] sm:text-[11px] text-zinc-500 mt-1';
+            subEl.innerText = '1R Breakeven • 3.5% Lock Active';
+          } else {
+            subEl.className = 'text-[10px] sm:text-[11px] text-zinc-500 mt-1';
+            subEl.innerText = '100% Cash Buffer (Safe)';
+          }
+        }
+
         // Render Dynamic Active Holdings Tabs
         const holdingsEl = document.getElementById('active-holdings-tabs');
         if (holdingsEl) {
@@ -1066,6 +1097,17 @@
                 </button>
               `;
             }).join('');
+          }
+        }
+
+        // If the currently active chart holding was closed, immediately switch chart to next open trade
+        if (activeChartOrderId && !openTrades.some(t => t.order_id === activeChartOrderId)) {
+          if (openTrades.length > 0) {
+            const nextTrade = openTrades[0];
+            const live = parseFloat(nextTrade.current_price || nextTrade.entry_price);
+            switchChartSymbol(nextTrade.ticker, nextTrade.ticker, nextTrade.entry_price, nextTrade.stop_loss, live, nextTrade.stage, nextTrade.order_id, null);
+          } else {
+            switchChartSymbol('AAPL', 'AAPL', null, null, null, null, null, null);
           }
         }
 

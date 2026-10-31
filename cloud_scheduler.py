@@ -20,6 +20,7 @@ from market_regime import MarketRegimeAnalyzer
 from position_manager import PositionManager
 from telegram_notifier import TelegramNotifier
 from reflection import TradeLogger, EODReflection
+from market_hours import is_us_market_open, is_nse_market_open
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -43,30 +44,15 @@ class CloudTradingDaemon:
 
     def is_market_day(self) -> bool:
         """Returns True if today is Monday to Friday."""
-        now_ist = datetime.now(IST)
-        return now_ist.weekday() < 5  # Mon=0, Fri=4
+        return is_nse_market_open() or is_us_market_open()
 
     def is_nse_market_open(self) -> bool:
-        """Returns True if current time is within NSE trading hours (09:15 - 15:30 IST)."""
-        if not self.is_market_day():
-            return False
-        now = datetime.now(IST)
-        market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-        return market_open <= now <= market_close
+        """Returns True if current time is within NSE trading hours (09:15 - 15:30 IST) excluding holidays."""
+        return is_nse_market_open()
 
     def is_us_market_open(self) -> bool:
-        """Returns True if current time is within Wall Street hours (19:30 - 01:30 IST)."""
-        now = datetime.now(IST)
-        # Evening session: Mon-Fri 19:30 - 23:59 IST
-        if 0 <= now.weekday() <= 4:
-            if now.hour > 19 or (now.hour == 19 and now.minute >= 30):
-                return True
-        # Post-midnight session: Tue-Sat 00:00 - 01:30 IST
-        if 1 <= now.weekday() <= 5:
-            if now.hour == 0 or (now.hour == 1 and now.minute <= 30):
-                return True
-        return False
+        """Returns True if current time is within Wall Street hours (09:30 - 16:00 ET) excluding holidays."""
+        return is_us_market_open()
 
     def periodic_market_check(self):
         """Runs every 15 minutes: sweeps open positions and executes scans during active market sessions."""
@@ -142,10 +128,10 @@ class CloudTradingDaemon:
         schedule.every().day.at("15:10", "Asia/Kolkata").do(self.pre_close_sweep)
         schedule.every().day.at("15:45", "Asia/Kolkata").do(self.eod_cycle)
 
-        # Wall Street (US Equities) Schedule in IST
-        schedule.every().day.at("19:30", "Asia/Kolkata").do(lambda: self.scan_us_cycle("19:30 IST US OPEN"))
-        schedule.every().day.at("22:00", "Asia/Kolkata").do(lambda: self.scan_us_cycle("22:00 IST US MID-DAY"))
-        schedule.every().day.at("01:15", "Asia/Kolkata").do(self.pre_close_sweep)
+        # Wall Street (US Equities) Schedule in America/New_York (Automatic DST adjustment)
+        schedule.every().day.at("09:35", "America/New_York").do(lambda: self.scan_us_cycle("09:35 ET US OPEN"))
+        schedule.every().day.at("12:30", "America/New_York").do(lambda: self.scan_us_cycle("12:30 ET US MID-DAY"))
+        schedule.every().day.at("15:45", "America/New_York").do(self.pre_close_sweep)
 
         # Recurring Autonomous Monitoring: sweeps positions & auto-executes setups every 15 minutes during active sessions
         schedule.every(15).minutes.do(self.periodic_market_check)
@@ -161,16 +147,16 @@ class CloudTradingDaemon:
 
         self.notifier.send_message(
             "☁️ <b>AMPOLIN CLOUD DAEMON ACTIVE (24/7 DUAL-MARKET)</b>\n\n"
-            "🇮🇳 <b>National Stock Exchange (NSE India):</b>\n"
+            "🇮🇳 <b>National Stock Exchange (NSE India - IST):</b>\n"
             "• 09:15 IST: Open Sweep & Health Check\n"
             "• 10:30 IST: Morning Swing Scan (Nifty 50)\n"
             "• 13:45 IST: Afternoon Swing Scan\n"
             "• 15:10 IST: Pre-Close 3.5% Profit Lock Sweep\n"
             "• 15:45 IST: EOD Reflection & Daily P&L\n\n"
-            "🇺🇸 <b>Wall Street (US Tech & Momentum):</b>\n"
-            "• 19:30 IST: Wall Street Open Scan (NVDA, AAPL...)\n"
-            "• 22:00 IST: US Mid-Session Momentum Scan\n"
-            "• 01:15 IST: US Pre-Close Trailing SL Sweep\n\n"
+            "🇺🇸 <b>Wall Street (NYSE/NASDAQ - America/New_York):</b>\n"
+            "• 09:35 ET: Wall Street Open Scan (NVDA, AAPL...)\n"
+            "• 12:30 ET: US Mid-Session Momentum Scan\n"
+            "• 15:45 ET: US Pre-Close Trailing SL Sweep\n\n"
             "💬 <b>2-Way AI Chat Online:</b> Message me anytime or type <b>/help</b>, <b>/positions</b>, or <b>/scan</b>!"
         )
 

@@ -117,17 +117,24 @@ class StateBackupManager:
 
         logger.info(f"Restoring {len(trades)} trades from state snapshot...")
         for t in trades:
+            one_r = t.get("one_r")
+            if one_r is None or one_r == 0:
+                entry_p = float(t.get("entry_price") or 0)
+                sl_p = float(t.get("stop_loss") or 0)
+                tp_p = float(t.get("take_profit") or 0)
+                one_r = round(abs(tp_p - entry_p) / 2.0, 4) if tp_p > entry_p else round(abs(entry_p - sl_p), 4)
+
             cursor.execute("""
                 INSERT OR REPLACE INTO trades (
                     order_id, ticker, action, entry_price, stop_loss, take_profit,
-                    quantity, initial_quantity, capital_allocated, risk_amount,
+                    quantity, initial_quantity, one_r, capital_allocated, risk_amount,
                     status, stage, partial_exit_taken, exit_price, pnl, pnl_percentage,
                     confidence, rationale, current_price, entry_time, exit_time, is_paper_trade, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 t.get("order_id"), t.get("ticker"), t.get("action"),
                 t.get("entry_price"), t.get("stop_loss"), t.get("take_profit"),
-                t.get("quantity"), t.get("initial_quantity"), t.get("capital_allocated"),
+                t.get("quantity"), t.get("initial_quantity"), one_r, t.get("capital_allocated"),
                 t.get("risk_amount"), t.get("status"), t.get("stage", "STAGE_INITIAL"),
                 t.get("partial_exit_taken", 0), t.get("exit_price"), t.get("pnl", 0.0),
                 t.get("pnl_percentage", 0.0), t.get("confidence"), t.get("rationale"),
