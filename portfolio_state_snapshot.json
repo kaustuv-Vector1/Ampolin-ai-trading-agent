@@ -1,7 +1,7 @@
 {
   "version": "2.0.0",
-  "timestamp": "2026-10-31T11:42:29.806233",
-  "open_positions_count": 3,
+  "timestamp": "2026-10-31T12:04:05.128930",
+  "open_positions_count": 2,
   "total_trades_count": 4,
   "trades": [
     {
@@ -41,14 +41,14 @@
       "quantity": 49,
       "capital_allocated": 18439.7,
       "risk_amount": 743.02,
-      "status": "SIMULATED_FILLED",
-      "exit_price": null,
-      "pnl": 796.37,
+      "status": "CLOSED",
+      "exit_price": 198.31,
+      "pnl": 402.29,
       "pnl_percentage": 4.32,
       "confidence": 0.82,
       "rationale": "Strong EMA trend momentum expansion with Fast EMA well above Slow EMA. RSI at 67.8 sits comfortably within the optimal bullish sweet spot. Backtest verification shows a positive expectancy per rupee, a strong profit factor of 1.81, and a low max drawdown.",
       "entry_time": "2026-10-29 23:43:59",
-      "exit_time": null,
+      "exit_time": "2026-10-31 11:57:53",
       "is_paper_trade": 1,
       "metadata_json": "{\"risk_reward_ratio\": 2.0, \"holding_period_days\": 5, \"key_risks\": \"Volume ratio is slightly below average at 0.74x, suggesting potential lack of immediate follow-through. Invalidation occurs if price breaches the 20 EMA and closes below the technical stop loss of \\u20b9182.44.\", \"backtest_win_rate\": 0.5, \"backtest_expectancy\": 344.52, \"raw_response\": {\"status\": \"success\", \"mode\": \"paper_trading\", \"orderId\": \"SIM-DHAN-20261029234359-WIPRO\", \"message\": \"Order simulated under 1% account risk parameters.\"}}",
       "initial_quantity": 97,
@@ -113,12 +113,12 @@
     {
       "date": "2026-10-31",
       "starting_capital": null,
-      "realized_pnl": 0.0,
-      "unrealized_pnl": 214.01,
+      "realized_pnl": 402.29,
+      "unrealized_pnl": -188.28,
       "total_trades": 4,
-      "win_count": 1,
+      "win_count": 2,
       "loss_count": 0,
-      "updated_at": "2026-10-31T00:03:00.791266"
+      "updated_at": "2026-10-31T11:58:54.390055"
     },
     {
       "date": "2026-10-30",

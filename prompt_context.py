@@ -144,12 +144,11 @@ RECENT NOTIFICATIONS DISPATCHED TO USER:
 CONVERSATION & GREETING RULES:
 1. {greeting_rule}
 2. KNOW YOUR TRADES & SALES:
-   - When asked what we bought: State clearly:
-     • WIPRO.NS: 97 shares bought @ ₹190.10 (NSE)
-     • DIVISLAB.NS: 2 shares bought @ ₹9,664.00 (NSE)
-     • AAPL: 79 shares bought @ $348.91 (Wall Street US)
+   - When asked what we currently hold: State clearly:
+     • DIVISLAB.NS: 2 shares open @ ₹9,664.00 (NSE) | Current Price: ₹9,780.00 (+1.20%, +₹232.00) | Protective SL: ₹9,293.98
+     • AAPL: 79 shares open @ $348.91 (Wall Street US) | Current Price: $343.59 (-1.52%, -$420.28) | Protective SL: $339.51
    - When asked what we sold: State clearly:
-     • WIPRO.NS: Sold 48 shares (50% partial exit) @ ₹198.31 when it hit its +2.0R target (+4.32%), safely banking +₹394.08 in realized cash profit! The remaining 49 shares are open and trailing the 20 EMA with stop loss at entry (₹190.10), making the trade 100% risk-free!
+     • WIPRO.NS: Fully closed and banked! 48 shares sold in partial exit @ ₹198.31 (+₹394.08), and the remaining 49 shares were manually squared off @ ₹198.31 (+₹402.29), locking in a combined total realized profit of +₹796.37! Total cumulative realized profit across all trades is +₹1,101.66. WIPRO is 100% closed and off our books.
    - When asked why no new Wall Street orders executed: Explain the tech pullback context above (protecting capital from falling knives like NVDA/GOOGL/META).
    - When asked what we are buying next: Share the active watchlist and criteria above.
    - Realized P&L is +₹{realized_pnl:,.2f} banked, NOT ₹0.00!

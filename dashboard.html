@@ -14,6 +14,7 @@
   <meta name="theme-color" content="#09090b">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
     html, body {
@@ -180,62 +181,101 @@
     </div>
   </div>
 
-  <!-- Interactive Candlestick Chart Module (TradingView Pro) -->
+  <!-- Interactive Candlestick Chart Module (Dual-Engine: TradingView Advanced & Lightweight Pro) -->
   <section id="section-charts" class="max-w-7xl mx-auto w-full px-4 sm:px-6 mb-5">
     <div class="fintech-card rounded-xl p-4 sm:p-5">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5">
+      <!-- Header Row: Title, Engine Switcher, Search Input, Direct TV Link -->
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3.5">
         <div>
           <div class="flex items-center gap-2">
             <h2 class="text-sm font-semibold text-white tracking-tight flex items-center gap-2">
-              <i class="fa-solid fa-chart-candlestick text-emerald-400"></i> Interactive Candlestick Charts
+              <i class="fa-solid fa-chart-candlestick text-emerald-400"></i> Interactive Stock Charts
             </h2>
-            <span class="text-[10px] bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-2 py-0.5 rounded mono">Lightweight Candlestick Engine</span>
+            <!-- Engine Toggle Pills -->
+            <div class="inline-flex rounded-lg border border-zinc-800 bg-zinc-900/90 p-0.5 text-xs mono">
+              <button id="engine-btn-lw" onclick="switchChartEngine('lw')" class="px-2.5 py-1 rounded-md bg-white text-black font-semibold transition flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-bolt text-[11px] text-emerald-600"></i> <span>Lightweight Pro</span>
+              </button>
+              <button id="engine-btn-tv" onclick="switchChartEngine('tv')" class="px-2.5 py-1 rounded-md text-zinc-400 hover:text-white transition flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-chart-line text-[11px]"></i> <span>TradingView Advanced</span>
+              </button>
+            </div>
           </div>
-          <p class="text-[11px] text-zinc-500 mt-0.5">Live technical price action with institutional trailing profit ratchets</p>
+          <p class="text-[11px] text-zinc-500 mt-1">Institutional price action, custom indicator levels, and universal stock search</p>
         </div>
 
-        <!-- Stock Switcher Tabs & External TV Link -->
-        <div class="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0" id="chart-tabs-container">
-          <div class="flex items-center gap-1.5 shrink-0">
-            <button onclick="switchChartSymbol('WIPRO.NS', 'WIPRO.NS', 190.10, 190.10, 198.31, 'STAGE_PARTIAL_BOOKED', 'SIM-DHAN-20261029234359-WIPRO', this)" class="chart-tab active bg-white text-black font-semibold px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer">
-              <span>🇮🇳 WIPRO</span>
-              <span class="text-[10px] text-emerald-800 bg-emerald-200 px-1 rounded font-bold">+4.32%</span>
+        <!-- Universal Stock Search & External TV Button -->
+        <div class="flex flex-wrap items-center gap-2">
+          <form onsubmit="handleCustomSymbolSearch(event)" class="flex items-center gap-1.5">
+            <div class="relative">
+              <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-zinc-500 text-[11px]"></i>
+              <input type="text" id="symbol-search-input" placeholder="Search (TSLA, NVDA, RELIANCE, TCS...)" autocomplete="off" class="w-44 sm:w-60 bg-zinc-900 border border-zinc-800 rounded-lg pl-7 pr-2 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 mono" />
+            </div>
+            <button type="submit" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 px-2.5 py-1.5 rounded-lg text-xs mono font-medium transition cursor-pointer">
+              Load
             </button>
-            <button onclick="switchChartSymbol('AAPL', 'AAPL', 348.91, 339.51, 342.99, 'STAGE_INITIAL', 'SIM-DHAN-20261030151823-AAPL', this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer">
-              <span>🇺🇸 AAPL</span>
-              <span class="text-[10px] text-zinc-400 font-bold">$342.99</span>
-            </button>
-            <button onclick="switchChartSymbol('DIVISLAB.NS', 'DIVISLAB.NS', 9664.00, 9293.98, 9780.00, 'STAGE_INITIAL', 'SIM-DHAN-20261029234345-DIVISLAB', this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer">
-              <span>🇮🇳 DIVISLAB</span>
-              <span class="text-[10px] text-emerald-400 font-bold">+1.20%</span>
-            </button>
-            <button onclick="switchChartSymbol('^NSEI', 'NIFTY 50', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer">
-              <span>📊 NIFTY 50</span>
-            </button>
-            <button onclick="switchChartSymbol('^INDIAVIX', 'INDIA VIX', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer">
-              <span>⚡ INDIA VIX</span>
-            </button>
-          </div>
+          </form>
 
-          <!-- Direct Link to official TradingView in new tab -->
-          <a id="btn-open-tv" href="https://www.tradingview.com/chart/?symbol=NSE:WIPRO" target="_blank" rel="noopener noreferrer" title="Open full chart on TradingView.com" class="fintech-card hover:bg-zinc-800 text-zinc-400 hover:text-white px-2.5 py-1.5 rounded-lg text-[11px] mono flex items-center gap-1.5 shrink-0 transition">
-            <span>TradingView</span>
+          <a id="btn-open-tv" href="https://www.tradingview.com/chart/?symbol=NSE:DIVISLAB" target="_blank" rel="noopener noreferrer" title="Open full chart on TradingView.com" class="fintech-card hover:bg-zinc-800 text-zinc-400 hover:text-white px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 shrink-0 transition">
+            <span>TradingView.com</span>
             <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
           </a>
         </div>
       </div>
 
-      <!-- Active Position Level Summary & Quick Actions -->
-      <div id="chart-position-bar" class="fintech-card-subtle rounded-lg p-2.5 mb-3 flex flex-wrap items-center justify-between gap-3 text-xs mono">
-        <div class="flex flex-wrap items-center gap-4">
-          <div><span class="text-zinc-500">Holding:</span> <span class="text-white font-bold" id="cp-ticker">WIPRO.NS</span></div>
-          <div><span class="text-zinc-500">Entry:</span> <span class="text-zinc-300 font-semibold" id="cp-entry">₹190.10</span></div>
-          <div><span class="text-zinc-500">Live Price:</span> <span class="text-emerald-400 font-bold" id="cp-live">₹197.31</span></div>
-          <div><span class="text-zinc-500">Stop Loss:</span> <span class="text-amber-400 font-semibold" id="cp-sl">₹193.90 (+2.0% floor locked)</span></div>
-          <div><span class="text-zinc-500">Stage:</span> <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/20" id="cp-stage">STAGE_PROFIT_LOCKED</span></div>
+      <!-- Quick Ticker Switcher Chips & Active Holdings Row -->
+      <div class="flex items-center gap-2 overflow-x-auto pb-2 mb-3 border-b border-zinc-850 touch-scroll" id="chart-tabs-container">
+        <!-- Dynamic Active Holdings (injected by loadTrades) -->
+        <div class="flex items-center gap-1.5 shrink-0" id="active-holdings-tabs">
+          <span class="text-[11px] text-zinc-500 mono py-1">Loading holdings...</span>
         </div>
 
-        <div class="flex items-center gap-1.5" id="cp-actions">
+        <div class="h-4 w-[1px] bg-zinc-800 shrink-0 mx-1"></div>
+
+        <!-- Benchmarks & Popular Watchlist Chips -->
+        <div class="flex items-center gap-1.5 shrink-0" id="market-browse-chips">
+          <button onclick="switchChartSymbol('^NSEI', 'NIFTY 50', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="^NSEI">
+            <span>📊 NIFTY</span>
+          </button>
+          <button onclick="switchChartSymbol('^INDIAVIX', 'INDIA VIX', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="^INDIAVIX">
+            <span>⚡ VIX</span>
+          </button>
+          <button onclick="switchChartSymbol('TSLA', 'TSLA', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="TSLA">
+            <span>TSLA</span>
+          </button>
+          <button onclick="switchChartSymbol('NVDA', 'NVDA', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="NVDA">
+            <span>NVDA</span>
+          </button>
+          <button onclick="switchChartSymbol('RELIANCE.NS', 'RELIANCE', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="RELIANCE.NS">
+            <span>RELIANCE</span>
+          </button>
+          <button onclick="switchChartSymbol('TCS.NS', 'TCS', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="TCS.NS">
+            <span>TCS</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Position / Browsing Status Bar -->
+      <div id="chart-position-bar" class="fintech-card-subtle rounded-lg p-2.5 mb-3 flex flex-wrap items-center justify-between gap-3 text-xs mono">
+        <!-- Active Holding Detail View -->
+        <div id="cp-pos-details" class="flex flex-wrap items-center gap-4 hidden">
+          <div><span class="text-zinc-500">Holding:</span> <span class="text-white font-bold" id="cp-ticker">--</span></div>
+          <div><span class="text-zinc-500">Entry:</span> <span class="text-zinc-300 font-semibold" id="cp-entry">--</span></div>
+          <div><span class="text-zinc-500">Live Price:</span> <span class="text-emerald-400 font-bold" id="cp-live">--</span></div>
+          <div><span class="text-zinc-500">Stop Loss:</span> <span class="text-amber-400 font-semibold" id="cp-sl">--</span></div>
+          <div><span class="text-zinc-500">Stage:</span> <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/20" id="cp-stage">ACTIVE</span></div>
+        </div>
+
+        <!-- Non-Holding Browsing View -->
+        <div id="cp-browse-details" class="flex items-center gap-2 text-zinc-400">
+          <i class="fa-solid fa-compass text-emerald-400"></i>
+          <span>Browsing Instrument: <b id="browse-symbol-title" class="text-white">DIVISLAB</b></span>
+          <span class="text-zinc-600">|</span>
+          <span class="text-zinc-500">Dual-market technicals • Use search above or click any stock</span>
+        </div>
+
+        <!-- 1-Click Action Controls (shown only for active holdings) -->
+        <div class="flex items-center gap-1.5 hidden" id="cp-actions">
           <button onclick="triggerQuickAction('breakeven')" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2.5 py-1 rounded border border-zinc-700 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
             <i class="fa-solid fa-bullseye text-[10px] text-zinc-400"></i> Breakeven
           </button>
@@ -248,9 +288,25 @@
         </div>
       </div>
 
-      <!-- TradingView Embed Container -->
-      <div class="h-[420px] w-full rounded-lg overflow-hidden border border-zinc-800/80 bg-black relative">
-        <div id="tradingview_embed_box" class="w-full h-[420px]" style="min-height: 420px;"></div>
+      <!-- TradingView Free Widget NSE Restriction Notice Banner -->
+      <div id="tv-nse-notice" class="hidden p-2.5 mb-2 bg-amber-950/40 border border-amber-800/40 rounded-lg text-amber-300 text-xs mono flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-circle-info text-amber-400"></i>
+          <span>TradingView limits free widget embeds for Indian NSE stocks. Use <b>Lightweight Pro</b> for full candles or view on TV.com.</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button onclick="switchChartEngine('lw')" class="bg-amber-400 hover:bg-amber-300 text-black px-2.5 py-0.5 rounded font-bold text-[11px] transition cursor-pointer">
+            ⚡ Switch to Lightweight Pro
+          </button>
+        </div>
+      </div>
+
+      <!-- Chart Display Containers (Dual-Engine) -->
+      <div id="chart-display-frame" class="h-[430px] w-full rounded-lg overflow-hidden border border-zinc-800/80 bg-black relative">
+        <!-- Lightweight Charts Engine Container -->
+        <div id="tradingview_embed_box" class="w-full h-[430px]" style="min-height: 430px;"></div>
+        <!-- TradingView Advanced Real-Time Widget Container -->
+        <div id="tradingview_widget_container" class="w-full h-[430px] hidden" style="min-height: 430px;"></div>
       </div>
     </div>
   </section>
@@ -504,8 +560,14 @@
   </footer>
 
   <script>
-    let activeChartOrderId = 'SIM-DHAN-20261029234359-WIPRO';
+    let activeChartOrderId = null;
+    let currentEngine = 'lw'; // 'lw' (Lightweight Pro) or 'tv' (TradingView Advanced)
+    let activeTicker = 'DIVISLAB.NS';
+    let activeTickerName = 'DIVISLAB.NS';
+    let activeEntry = null;
+    let activeSL = null;
     window.chatSessionHistory = [];
+    window.lastOpenTrades = [];
 
     // Live IST Clock
     function updateClock() {
@@ -515,6 +577,104 @@
     }
     setInterval(updateClock, 1000);
     updateClock();
+
+    // Chart Engine Switcher
+    function switchChartEngine(engine) {
+      currentEngine = engine;
+      const lwBtn = document.getElementById('engine-btn-lw');
+      const tvBtn = document.getElementById('engine-btn-tv');
+      const lwBox = document.getElementById('tradingview_embed_box');
+      const tvBox = document.getElementById('tradingview_widget_container');
+      const nseNotice = document.getElementById('tv-nse-notice');
+
+      if (engine === 'tv') {
+        tvBtn.className = 'px-2.5 py-1 rounded-md bg-white text-black font-semibold transition flex items-center gap-1.5 cursor-pointer';
+        lwBtn.className = 'px-2.5 py-1 rounded-md text-zinc-400 hover:text-white transition flex items-center gap-1.5 cursor-pointer';
+        lwBox.classList.add('hidden');
+        tvBox.classList.remove('hidden');
+        renderTradingViewAdvancedWidget(activeTicker);
+      } else {
+        lwBtn.className = 'px-2.5 py-1 rounded-md bg-white text-black font-semibold transition flex items-center gap-1.5 cursor-pointer';
+        tvBtn.className = 'px-2.5 py-1 rounded-md text-zinc-400 hover:text-white transition flex items-center gap-1.5 cursor-pointer';
+        tvBox.classList.add('hidden');
+        if (nseNotice) nseNotice.classList.add('hidden');
+        lwBox.classList.remove('hidden');
+        loadCandlestickChart(activeTicker, activeEntry, activeSL);
+      }
+    }
+
+    // TradingView Advanced Real-Time Widget Renderer
+    function renderTradingViewAdvancedWidget(ticker) {
+      const container = document.getElementById('tradingview_widget_container');
+      const nseNotice = document.getElementById('tv-nse-notice');
+      if (!container) return;
+
+      container.innerHTML = '';
+
+      let tvSymbol = ticker;
+      const isNse = ticker.endsWith('.NS') || ticker === '^NSEI' || ticker === '^INDIAVIX';
+      if (ticker.endsWith('.NS')) {
+        tvSymbol = `NSE:${ticker.replace('.NS', '')}`;
+      } else if (ticker === '^NSEI') {
+        tvSymbol = 'NSE:NIFTY';
+      } else if (ticker === '^INDIAVIX') {
+        tvSymbol = 'NSE:INDIAVIX';
+      } else if (ticker.startsWith('^') || ticker.includes('-')) {
+        tvSymbol = ticker;
+      } else if (!ticker.includes(':')) {
+        tvSymbol = `NASDAQ:${ticker}`;
+      }
+
+      if (isNse && nseNotice) {
+        nseNotice.classList.remove('hidden');
+      } else if (nseNotice) {
+        nseNotice.classList.add('hidden');
+      }
+
+      if (typeof TradingView !== 'undefined' && TradingView.widget) {
+        new TradingView.widget({
+          autosize: true,
+          symbol: tvSymbol,
+          interval: "D",
+          timezone: "Asia/Kolkata",
+          theme: "dark",
+          style: "1",
+          locale: "en",
+          toolbar_bg: "#09090b",
+          enable_publishing: false,
+          allow_symbol_change: true, // Allows user to browse ANY stock inside TradingView!
+          hide_side_toolbar: false,
+          withdateranges: true,
+          studies: [
+            "MASimple@tv-basicstudies",
+            "RSI@tv-basicstudies"
+          ],
+          container_id: "tradingview_widget_container"
+        });
+      } else {
+        container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-xs mono gap-2"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading TradingView Engine...</div>';
+      }
+    }
+
+    // Universal Stock Search Handler
+    function handleCustomSymbolSearch(e) {
+      if (e) e.preventDefault();
+      const input = document.getElementById('symbol-search-input');
+      if (!input) return;
+      let raw = input.value.trim().toUpperCase();
+      if (!raw) return;
+
+      let ticker = raw;
+      if (!ticker.includes('.') && !ticker.includes(':') && !ticker.startsWith('^')) {
+        const indianList = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'ITC', 'TATAMOTORS', 'TATASTEEL', 'WIPRO', 'DIVISLAB', 'BHARTIARTL', 'LT', 'HINDUNILVR', 'KOTAKBANK', 'AXISBANK', 'MARUTI', 'SUNPHARMA', 'BAJFINANCE', 'TITAN', 'BEL', 'TRENT'];
+        if (indianList.includes(ticker)) {
+          ticker = `${ticker}.NS`;
+        }
+      }
+
+      input.value = '';
+      switchChartSymbol(ticker, ticker, null, null, null, null, null, null);
+    }
 
     // TradingView Lightweight Charts Pro Engine
     let currentChart = null;
@@ -551,7 +711,7 @@
         currentPriceLines = [];
 
         const width = container.clientWidth || container.offsetWidth || 800;
-        const height = container.clientHeight || container.offsetHeight || 420;
+        const height = container.clientHeight || container.offsetHeight || 430;
 
         const chart = LightweightCharts.createChart(container, {
           width: width,
@@ -655,25 +815,44 @@
     }
 
     function switchChartSymbol(ticker, tickerName, entry, sl, live, stage, orderId, btnEl) {
+      activeTicker = ticker;
+      activeTickerName = tickerName || ticker;
+      activeEntry = entry;
+      activeSL = sl;
+      activeChartOrderId = orderId;
+
+      // Update Active Tab Styling
       document.querySelectorAll('.chart-tab').forEach(b => {
-        b.className = 'chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer';
+        b.className = 'chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer shrink-0';
       });
       if (btnEl) {
-        btnEl.className = 'chart-tab active bg-white text-black font-semibold px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer';
+        btnEl.className = 'chart-tab active bg-white text-black font-semibold px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer shrink-0';
+      } else {
+        const match = document.querySelector(`.chart-tab[data-ticker="${ticker}"]`);
+        if (match) match.className = 'chart-tab active bg-white text-black font-semibold px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer shrink-0';
       }
 
-      const bar = document.getElementById('chart-position-bar');
-      if (entry !== null && entry !== undefined) {
-        bar.classList.remove('hidden');
+      // Update Position Bar Views
+      const posDetails = document.getElementById('cp-pos-details');
+      const posBrowse = document.getElementById('cp-browse-details');
+      const cpActions = document.getElementById('cp-actions');
+
+      if (entry !== null && entry !== undefined && orderId) {
+        posDetails.classList.remove('hidden');
+        posBrowse.classList.add('hidden');
+        cpActions.classList.remove('hidden');
+
         document.getElementById('cp-ticker').innerText = tickerName;
         const sym = tickerName.endsWith('.NS') ? '₹' : '$';
         document.getElementById('cp-entry').innerText = sym + Number(entry).toFixed(2);
         document.getElementById('cp-live').innerText = sym + Number(live || entry).toFixed(2);
         document.getElementById('cp-sl').innerText = sym + Number(sl).toFixed(2);
-        document.getElementById('cp-stage').innerText = stage;
-        activeChartOrderId = orderId;
+        document.getElementById('cp-stage').innerText = stage || 'ACTIVE';
       } else {
-        bar.classList.add('hidden');
+        posDetails.classList.add('hidden');
+        posBrowse.classList.remove('hidden');
+        cpActions.classList.add('hidden');
+        document.getElementById('browse-symbol-title').innerText = tickerName || ticker;
       }
 
       // Update external TradingView link
@@ -683,11 +862,15 @@
         if (ticker.endsWith('.NS')) tvSym = `NSE:${ticker.replace('.NS', '')}`;
         else if (ticker === '^NSEI') tvSym = 'NSE:NIFTY';
         else if (ticker === '^INDIAVIX') tvSym = 'NSE:INDIAVIX';
-        else tvSym = `NASDAQ:${ticker}`;
+        else if (!ticker.includes(':') && !ticker.startsWith('^')) tvSym = `NASDAQ:${ticker}`;
         extBtn.href = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSym)}`;
       }
 
-      loadCandlestickChart(ticker, entry, sl);
+      if (currentEngine === 'tv') {
+        renderTradingViewAdvancedWidget(ticker);
+      } else {
+        loadCandlestickChart(ticker, entry, sl);
+      }
     }
 
     // 1-Click Action Controls
@@ -760,10 +943,18 @@
 
     // Load Initial Data
     async function initDashboard() {
-      await loadCandlestickChart('WIPRO.NS', 190.10, 190.10);
+      await loadTrades();
       await loadStatus();
       await loadRules();
-      await loadTrades();
+
+      // Automatically select first active position, or default to AAPL
+      if (window.lastOpenTrades && window.lastOpenTrades.length > 0) {
+        const first = window.lastOpenTrades[0];
+        const live = parseFloat(first.current_price || first.entry_price);
+        switchChartSymbol(first.ticker, first.ticker, first.entry_price, first.stop_loss, live, first.stage, first.order_id, null);
+      } else {
+        switchChartSymbol('AAPL', 'AAPL', null, null, null, null, null, null);
+      }
     }
 
     async function loadStatus() {
@@ -848,6 +1039,36 @@
       try {
         const res = await fetch('/api/trades');
         const data = await res.json();
+
+        // Extract active open positions (exclude closed trades)
+        const openTrades = (data.trades || []).filter(t => t.status !== 'CLOSED');
+        window.lastOpenTrades = openTrades;
+
+        // Render Dynamic Active Holdings Tabs
+        const holdingsEl = document.getElementById('active-holdings-tabs');
+        if (holdingsEl) {
+          if (openTrades.length === 0) {
+            holdingsEl.innerHTML = '<span class="text-[11px] text-zinc-500 mono py-1">No open positions (100% Cash)</span>';
+          } else {
+            holdingsEl.innerHTML = openTrades.map(t => {
+              const isNse = t.ticker.endsWith('.NS');
+              const flag = isNse ? '🇮🇳' : '🇺🇸';
+              const cleanName = t.ticker.replace('.NS', '');
+              const entry = parseFloat(t.entry_price || 0);
+              const live = parseFloat(t.current_price || entry);
+              const pnlPct = t.pnl_percentage !== null && t.pnl_percentage !== undefined ? parseFloat(t.pnl_percentage) : ((live - entry) / (entry || 1) * 100);
+              const badgeColor = pnlPct >= 0 ? 'text-emerald-400 bg-emerald-950/60 border border-emerald-800/40' : 'text-rose-400 bg-rose-950/60 border border-rose-800/40';
+              const sign = pnlPct >= 0 ? '+' : '';
+              return `
+                <button onclick="switchChartSymbol('${t.ticker}', '${t.ticker}', ${entry}, ${t.stop_loss}, ${live}, '${t.stage}', '${t.order_id}', this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-300 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer shrink-0" data-ticker="${t.ticker}">
+                  <span>${flag} ${cleanName}</span>
+                  <span class="text-[10px] ${badgeColor} px-1.5 py-0.2 rounded font-bold">${sign}${pnlPct.toFixed(2)}%</span>
+                </button>
+              `;
+            }).join('');
+          }
+        }
+
         const tbody = document.getElementById('trades-tbody');
         if (!data.trades || data.trades.length === 0) {
           tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td></tr>';
