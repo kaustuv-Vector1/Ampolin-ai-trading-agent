@@ -14,7 +14,6 @@
   <meta name="theme-color" content="#09090b">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
     html, body {
@@ -31,8 +30,20 @@
     ::-webkit-scrollbar-track { background: #09090b; }
     ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
     ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
-    .fintech-card { background-color: #121215; border: 1px solid rgba(255, 255, 255, 0.07); }
-    .fintech-card-subtle { background-color: #16161a; border: 1px solid rgba(255, 255, 255, 0.05); }
+    .fintech-card {
+      background-color: #121215;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .fintech-card:hover {
+      border-color: rgba(255, 255, 255, 0.13);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    }
+    .fintech-card-subtle {
+      background-color: #16161a;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
     .chart-tab.active { background-color: #ffffff; color: #000000; font-weight: 600; box-shadow: 0 0 12px rgba(255, 255, 255, 0.2); }
     .mobile-tab-btn {
       transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -46,6 +57,33 @@
     .touch-scroll {
       -webkit-overflow-scrolling: touch;
     }
+    /* Smooth number transitions */
+    .metric-animate {
+      transition: color 0.4s ease;
+    }
+    /* Fade-in for dynamically loaded content */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in-up {
+      animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    /* Pulse glow for live data */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.15); }
+      50% { box-shadow: 0 0 12px 2px rgba(52, 211, 153, 0.08); }
+    }
+    .live-glow { animation: pulseGlow 3s ease-in-out infinite; }
+    /* Smooth button press */
+    .btn-press { transition: transform 0.12s ease, box-shadow 0.12s ease; }
+    .btn-press:active { transform: scale(0.96); }
+    /* Chat message slide-in */
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .chat-msg { animation: slideIn 0.25s ease-out both; }
   </style>
 </head>
 <body class="bg-[#09090b] text-zinc-300 min-h-screen flex flex-col antialiased selection:bg-white selection:text-black pb-24 md:pb-0 overflow-x-hidden">
@@ -86,12 +124,12 @@
 
   <!-- Metric Overview Bar (Minimalist Swiss Cards) -->
   <div id="section-dashboard" class="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-5 grid grid-cols-2 md:grid-cols-6 gap-2.5 sm:gap-3.5">
-    <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl live-glow">
       <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
         <span>Portfolio Equity</span>
         <i class="fa-solid fa-wallet text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-equity">₹100,912.28</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums metric-animate" id="metric-equity">₹100,912.28</div>
       <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-funds-breakdown">Cash: ₹34,668 | Invested: ₹65,332</div>
     </div>
 
@@ -100,7 +138,7 @@
         <span>Unrealized P&amp;L</span>
         <i class="fa-solid fa-chart-line text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-lg sm:text-2xl font-bold text-emerald-400 mono tabular-nums" id="metric-pnl">+₹912.28</div>
+      <div class="text-lg sm:text-2xl font-bold text-emerald-400 mono tabular-nums metric-animate" id="metric-pnl">+₹912.28</div>
       <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-pnl-breakdown">Floating: +₹912.28 | Realized: ₹0.00</div>
     </div>
 
@@ -127,7 +165,7 @@
         <span>Win Rate (Filtered)</span>
         <i class="fa-solid fa-bullseye text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-winrate">100.0%</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums metric-animate" id="metric-winrate">100.0%</div>
       <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-winrate-sub">Real-Time Win Rate</div>
     </div>
 
@@ -144,23 +182,23 @@
   <!-- Primary Action & Control Toolbar -->
   <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 py-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
     <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-      <button onclick="runPipeline()" id="btn-pipeline" class="bg-white hover:bg-zinc-200 text-black font-semibold px-3.5 py-2 rounded-lg text-xs tracking-wide flex items-center justify-center gap-2 transition active:scale-95 shadow-sm cursor-pointer">
+      <button onclick="runPipeline()" id="btn-pipeline" class="btn-press bg-white hover:bg-zinc-200 text-black font-semibold px-3.5 py-2 rounded-lg text-xs tracking-wide flex items-center justify-center gap-2 transition active:scale-95 shadow-sm cursor-pointer">
         <i class="fa-solid fa-play text-[10px]"></i> Run Pipeline
       </button>
 
-      <button onclick="runScan()" id="btn-scan" class="fintech-card hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
+      <button onclick="runScan()" id="btn-scan" class="btn-press fintech-card hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
         <i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan NSE
       </button>
 
-      <button onclick="managePositions()" id="btn-manage" class="fintech-card hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
+      <button onclick="managePositions()" id="btn-manage" class="btn-press fintech-card hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
         <i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Sweep &amp; Lock Profits
       </button>
 
-      <button onclick="runEOD()" id="btn-eod" class="fintech-card hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-medium px-3 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
+      <button onclick="runEOD()" id="btn-eod" class="btn-press fintech-card hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
         <i class="fa-solid fa-microscope text-[10px]"></i> EOD Reflection
       </button>
 
-      <a href="/api/backup/export" download="portfolio_state_snapshot.json" class="fintech-card hover:bg-zinc-800 text-zinc-300 font-medium px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 transition text-xs cursor-pointer">
+      <a href="/api/backup/export" download="portfolio_state_snapshot.json" class="btn-press fintech-card hover:bg-zinc-800 text-zinc-300 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-1.5 transition text-xs cursor-pointer">
         <i class="fa-solid fa-cloud-arrow-down text-[10px] text-zinc-400"></i> Export State
       </a>
     </div>
@@ -998,6 +1036,18 @@
         }
 
         document.getElementById('metric-winrate').innerText = (data.win_rate * 100).toFixed(1) + '%';
+        const winrateSubEl = document.getElementById('metric-winrate-sub');
+        if (winrateSubEl && window.lastOpenTrades && window.lastOpenTrades.length > 0) {
+          const profitable = window.lastOpenTrades.filter(t => {
+            const entry = parseFloat(t.entry_price || 0);
+            const live = parseFloat(t.current_price || entry);
+            const pnl = t.pnl !== null && t.pnl !== undefined ? parseFloat(t.pnl) : (live - entry);
+            return pnl >= 0;
+          }).length;
+          winrateSubEl.innerText = `${profitable}/${window.lastOpenTrades.length} Positions in Profit`;
+        } else if (winrateSubEl) {
+          winrateSubEl.innerText = 'Real-Time Win Rate';
+        }
         document.getElementById('metric-open-trades').innerText = data.open_positions;
         document.getElementById('badge-brain').innerText = data.ai_model || 'Gemini 3.5 • Groq';
 
@@ -1091,7 +1141,7 @@
               const badgeColor = pnlPct >= 0 ? 'text-emerald-400 bg-emerald-950/60 border border-emerald-800/40' : 'text-rose-400 bg-rose-950/60 border border-rose-800/40';
               const sign = pnlPct >= 0 ? '+' : '';
               return `
-                <button onclick="switchChartSymbol('${t.ticker}', '${t.ticker}', ${entry}, ${t.stop_loss}, ${live}, '${t.stage}', '${t.order_id}', this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-300 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer shrink-0" data-ticker="${t.ticker}">
+                <button onclick="switchChartSymbol('${t.ticker}', '${t.ticker}', ${entry}, ${t.stop_loss}, ${live}, '${t.stage}', '${t.order_id}', this)" class="chart-tab fade-in-up fintech-card-subtle hover:bg-zinc-800 text-zinc-300 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer shrink-0" data-ticker="${t.ticker}">
                   <span>${flag} ${cleanName}</span>
                   <span class="text-[10px] ${badgeColor} px-1.5 py-0.2 rounded font-bold">${sign}${pnlPct.toFixed(2)}%</span>
                 </button>
@@ -1151,7 +1201,7 @@
           ` : `<span class="text-zinc-600 text-center block">&mdash;</span>`;
 
           return `
-            <tr onclick="switchChartSymbol('${t.ticker}', '${t.ticker}', ${entry}, ${t.stop_loss}, ${live}, '${t.stage}', '${t.order_id}', null)" class="hover:bg-zinc-900/60 transition mono text-xs cursor-pointer">
+            <tr onclick="switchChartSymbol('${t.ticker}', '${t.ticker}', ${entry}, ${t.stop_loss}, ${live}, '${t.stage}', '${t.order_id}', null)" class="fade-in-up hover:bg-zinc-900/60 transition mono text-xs cursor-pointer">
               <td class="py-2.5 px-3 font-semibold text-white">${flag}${t.ticker}</td>
               <td class="py-2.5 px-3"><span class="font-bold text-white">${t.action}</span></td>
               <td class="py-2.5 px-3 text-zinc-300 tabular-nums">${qty}</td>
@@ -1313,7 +1363,7 @@
       input.value = '';
 
       container.innerHTML += `
-        <div class="flex gap-2 items-start justify-end">
+        <div class="flex gap-2 items-start justify-end chat-msg">
           <div class="bg-white text-black p-3 rounded-xl max-w-[85%] text-xs font-medium">
             ${escapeHtml(msg)}
           </div>
@@ -1323,7 +1373,7 @@
 
       const typingId = 'typing-' + Date.now();
       container.innerHTML += `
-        <div id="${typingId}" class="flex gap-2 items-start">
+        <div id="${typingId}" class="flex gap-2 items-start chat-msg">
           <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
           <div class="bg-zinc-900/80 text-zinc-400 border border-zinc-800 p-2.5 rounded-xl text-xs flex items-center gap-1.5 mono">
             <i class="fa-solid fa-circle-notch fa-spin text-emerald-400"></i> Thinking...
@@ -1347,12 +1397,12 @@
         }
 
         const formatted = (data.reply || "No reply generated.")
-          .replace(/\\n\\n/g, '<br><br>')
-          .replace(/\\n/g, '<br>')
-          .replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
+          .replace(/\n\n/g, '<br><br>')
+          .replace(/\n/g, '<br>')
+          .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
 
         container.innerHTML += `
-          <div class="flex gap-2 items-start">
+          <div class="flex gap-2 items-start chat-msg">
             <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
             <div class="bg-zinc-900/90 text-zinc-200 border border-zinc-800 p-3 rounded-xl max-w-[85%] text-xs leading-relaxed">
               ${formatted}
@@ -1362,7 +1412,7 @@
       } catch (err) {
         document.getElementById(typingId)?.remove();
         container.innerHTML += `
-          <div class="flex gap-2 items-start">
+          <div class="flex gap-2 items-start chat-msg">
             <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
             <div class="bg-rose-950/40 text-rose-300 border border-rose-900/50 p-3 rounded-xl max-w-[85%] text-xs">
               Error: ${err.message || 'Could not connect to AI'}
@@ -1378,7 +1428,18 @@
       return text.replace(/[&<>"']/g, function(m) { return map[m]; });
     }
 
-    window.onload = initDashboard;
+    window.onload = function() {
+      initDashboard();
+      // Auto-refresh metrics, holdings, and status every 30 seconds
+      setInterval(async () => {
+        try {
+          await loadTrades();
+          await loadStatus();
+        } catch (e) {
+          console.warn('Auto-refresh polling error:', e);
+        }
+      }, 30000);
+    };
   </script>
 </body>
 </html>

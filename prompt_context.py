@@ -75,7 +75,7 @@ def build_dynamic_system_prompt(
 
         line = f"  • {ticker} ({flag}): {qty} shares @ {sym}{entry:,.2f} | Current Live Price: {sym}{curr:,.2f} (P&L: {gain_pct:+.2f}%, {sym}{pnl:+,.2f}) | Protective SL: {sym}{sl:,.2f} | Stage: {stage}"
         if t.get("partial_exit_taken"):
-            line += f" -> [STATUS: 50% partial profit target hit! 48 shares were sold @ ₹198.31 to bank profit; remaining {qty} shares are trailing 20 EMA with zero downside risk]"
+            line += f" -> [STATUS: 50% partial profit target hit and banked! Remaining {qty} shares trailing 20 EMA with zero downside risk]"
         elif stage == "STAGE_PROFIT_LOCKED":
             line += " -> [STATUS: +2.0% profit floor locked]"
         elif stage == "STAGE_BREAKEVEN":
@@ -130,31 +130,37 @@ Closed & Realized Trades (Sold Positions):
 {closed_trades_str}
 
 Wall Street & Market Execution Intelligence:
-- Current Wall Street Session: {us_status}
-- Exactly Why No New US Orders Executed Last Night: Our autonomous scanner scanned all 20 mega-cap US stocks (NVDA, MSFT, AMZN, GOOGL, META, TSLA, AMD, PLTR...). Yesterday, Big Tech experienced a broad-market tech selloff across Nasdaq: NVDA (-7.2% below 20 EMA, RSI 33.5), GOOGL (-14.7% below 20 EMA, RSI 20.9), META (-8.1%), AMZN (-5.3%), and AMD (-10.5%) all traded below their 20/50 EMAs with oversold RSIs under 40. Ampolin's institutional rules strictly forbid buying falling knives. TSLA was up (+3.3% above 20 EMA) but was rejected by our 2.2% anti-chasing rule to prevent buying tops. Our capital preservation filters protected our money from entering losing tech trades!
-- What We Are Going to Buy Next (Active Watchlist):
-  • NSE (Next session Monday 09:15 IST): Scanning liquid Nifty 50 leaders approaching fresh 20/50 EMA golden crosses or pullbacks to the 20 EMA (Reliance, TCS, HDFC Bank, Trent, BEL).
-  • Wall Street (Next session Monday 09:30 ET): Watching for tech bounce and stabilization in NVDA, MSFT, and AMZN reclaiming their 20 EMAs with bullish RSI (48-68), plus tracking AAPL toward its $367.71 target.
-  • Free Liquid Cash: We have ₹{available_cash:,.2f} in free cash ready to deploy the instant a stock passes all 5 VectorBT & Gemini criteria!
+- Current Market Status: NSE: {nse_status} | Wall Street: {us_status}
+- Why Orders Execute or Filter Out:
+  Every candidate in NSE (Nifty 50) and Wall Street (US Mega-Caps) must satisfy 5 strict quantitative filters before any order is placed:
+  1. Trend Alignment: Weekly 20 EMA > 50 EMA confluence
+  2. Momentum Sweet Spot: Daily RSI between 48 and 68 (avoiding falling knives RSI < 48 and overbought tops RSI > 68)
+  3. Anti-Chasing Ceiling: Price within 2.2% of the 20 EMA
+  4. Backtest Proof: VectorBT historical win rate >= 52% and Profit Factor >= 1.50
+  5. Capital Safety: 20% max single-stock cap, 15% liquid cash floor, and 3% daily loss circuit breaker
+  When no new orders execute, explain that our quantitative filters protected capital from overextended or declining setups.
+- Active Watchlist & What We Buy Next:
+  • NSE: Scanning liquid Nifty 50 leaders on pullbacks to the 20 EMA with bullish RSI and weekly confluence.
+  • Wall Street: Tracking top US tech leaders (NVDA, AAPL, MSFT, AMZN, GOOGL, META, TSLA) for 20 EMA support reclaims and RSI stabilization.
+  • Liquid Buffer: ₹{available_cash:,.2f} available cash ready to deploy as soon as setups pass all 5 filters.
 
 RECENT NOTIFICATIONS DISPATCHED TO USER:
 {recent_alerts_str}
 
-CONVERSATION & GREETING RULES:
+CONVERSATION & TRADING RULES:
 1. {greeting_rule}
-2. KNOW YOUR TRADES & SALES:
-   - When asked what we currently hold: State clearly:
-     • DIVISLAB.NS: 2 shares open @ ₹9,664.00 (NSE) | Current Price: ₹9,780.00 (+1.20%, +₹232.00) | Protective SL: ₹9,293.98
-     • AAPL: 79 shares open @ $348.91 (Wall Street US) | Current Price: $343.59 (-1.52%, -$420.28) | Protective SL: $339.51
-   - When asked what we sold: State clearly:
-     • WIPRO.NS: Fully closed and banked! 48 shares sold in partial exit @ ₹198.31 (+₹394.08), and the remaining 49 shares were manually squared off @ ₹198.31 (+₹402.29), locking in a combined total realized profit of +₹796.37! Total cumulative realized profit across all trades is +₹1,101.66. WIPRO is 100% closed and off our books.
-   - When asked why no new Wall Street orders executed: Explain the tech pullback context above (protecting capital from falling knives like NVDA/GOOGL/META).
-   - When asked what we are buying next: Share the active watchlist and criteria above.
+2. KNOW YOUR TRADES & SALES (ZERO HALLUCINATIONS):
+   - When asked what we currently hold: State EXACTLY what is listed in "Active Open Positions" above. Quote the exact ticker, shares, entry price, live price, P&L, stop loss, and current stage. If none, state 100% cash.
+   - When asked what we sold: State EXACTLY what is listed in "Closed & Realized Trades" above, including sold quantities, exit prices, and realized profit booked.
+   - When asked why orders did or did not execute: Refer to the 5 quantitative filters above (protecting capital from falling knives or overextended rallies).
+   - When asked what we will buy next: Explain our dynamic watchlist and criteria above.
    - Realized P&L is +₹{realized_pnl:,.2f} banked, NOT ₹0.00!
 3. MARKET HOURS AWARENESS:
-   - Understand the current live time ({now_ist.strftime('%A, %H:%M:%S IST')} / {now_et.strftime('%H:%M:%S ET')}). NSE is closed for the weekend (reopens Monday 09:15 IST). Wall Street closed its Friday session at 16:00 ET and reopens Monday 09:30 ET.
+   - Always refer to the real-time status: NSE ({nse_status}) and Wall Street ({us_status}). Never state the market is closed for the weekend if it is a weekday session.
 4. CAPITAL PROTECTION GUARANTEES:
    - Reassure Kaustuv that 6 mathematical circuit breakers prevent any dumping: 20% max per stock, 15% cash reserve floor, 4 max positions, 3% daily loss kill-switch, single-share veto, and zero leverage CNC delivery.
-5. READABILITY: Use clear bullet points, bold key prices and P&L numbers, and keep responses concise, transparent, and institutional.
+5. ACCURACY & VERIFICATION:
+   - Before answering any question about holdings, prices, or P&L, silently verify your numbers against the Active Open Positions and Portfolio Context data above to ensure 100% factual accuracy.
+6. READABILITY: Use clean bullet points, bold key prices and P&L numbers, and keep responses concise, transparent, and institutional.
 """
     return prompt.strip()
