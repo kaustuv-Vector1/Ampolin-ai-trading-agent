@@ -125,9 +125,16 @@ class InteractiveTelegramBot:
             invested = float(t.get("capital_allocated") or (entry * qty))
             current_val = round(curr * qty, 2)
             gain_pct = ((curr - entry) / entry) * 100.0
-            pnl = float(t.get("pnl") or (curr - entry) * qty)
-            pnl_sign = "+" if pnl >= 0 else ""
-            pnl_icon = "🟢" if pnl >= 0 else "🔴"
+            pnl = (curr - entry) * qty if (curr and entry) else float(t.get("pnl") or 0.0)
+
+            if pnl >= 0:
+                pnl_str = f"+{sym}{pnl:,.2f}"
+                gain_str = f"+{gain_pct:.2f}%"
+                pnl_icon = "🟢"
+            else:
+                pnl_str = f"-{sym}{abs(pnl):,.2f}"
+                gain_str = f"{gain_pct:.2f}%"
+                pnl_icon = "🔴"
 
             # Check if this position had a partial exit taken (FIX 3)
             partial_pnl_line = ""
@@ -157,7 +164,7 @@ class InteractiveTelegramBot:
                 f"• Invested Capital: {sym}{invested:,.2f}\n"
                 f"• Entry: {sym}{entry:,.2f} | <b>Live Price: {sym}{curr:,.2f}</b>\n"
                 f"• Current Value: {sym}{current_val:,.2f}\n"
-                f"• <b>Unrealized P&L: {pnl_sign}{gain_pct:.2f}% ({pnl_sign}{sym}{pnl:,.2f})</b> {pnl_icon}\n"
+                f"• <b>Unrealized P&L: {gain_str} ({pnl_str})</b> {pnl_icon}\n"
                 f"{partial_pnl_line}"
                 f"• Stop Loss: {sym}{float(t['stop_loss']):,.2f} | Target: {sym}{float(t['take_profit']):,.2f}\n"
                 f"• Strategy Status: <code>{status_icon}</code>\n"
