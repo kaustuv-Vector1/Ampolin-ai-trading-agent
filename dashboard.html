@@ -314,10 +314,10 @@
 
         <!-- 1-Click Action Controls (shown only for active holdings) -->
         <div class="flex items-center gap-1.5 hidden" id="cp-actions">
-          <button onclick="triggerQuickAction('breakeven')" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2.5 py-1 rounded border border-zinc-700 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
+          <button id="btn-quick-be" onclick="triggerQuickAction('breakeven')" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2.5 py-1 rounded border border-zinc-700 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
             <i class="fa-solid fa-bullseye text-[10px] text-zinc-400"></i> Breakeven
           </button>
-          <button onclick="triggerQuickAction('lock-profit')" class="bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 px-2.5 py-1 rounded border border-amber-800/60 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
+          <button id="btn-quick-lock" onclick="triggerQuickAction('lock-profit')" class="bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 px-2.5 py-1 rounded border border-amber-800/60 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
             <i class="fa-solid fa-lock text-[10px] text-amber-400"></i> Lock +2%
           </button>
           <button onclick="triggerQuickAction('close')" class="bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 px-2.5 py-1 rounded border border-rose-800/60 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
@@ -899,6 +899,19 @@
         document.getElementById('cp-live').innerText = sym + Number(live || entry).toFixed(2);
         document.getElementById('cp-sl').innerText = sym + Number(sl).toFixed(2);
         document.getElementById('cp-stage').innerText = stage || 'ACTIVE';
+
+        // Only show "Lock +2%" if gain >= +2.0%, and Breakeven if gain >= 0%
+        const gainPct = entry > 0 ? (((live || entry) - entry) / entry * 100) : 0;
+        const btnLock = document.getElementById('btn-quick-lock');
+        const btnBE = document.getElementById('btn-quick-be');
+        if (btnLock) {
+          if (gainPct >= 2.0) btnLock.classList.remove('hidden');
+          else btnLock.classList.add('hidden');
+        }
+        if (btnBE) {
+          if (gainPct >= 0) btnBE.classList.remove('hidden');
+          else btnBE.classList.add('hidden');
+        }
       } else {
         posDetails.classList.add('hidden');
         posBrowse.classList.remove('hidden');
@@ -1192,11 +1205,15 @@
             stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-700 bg-zinc-800 text-zinc-400 font-mono font-medium">CLOSED (BANKED)</span>';
           }
 
+          const beBtn = pnlPct >= 0 ? `<button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'breakeven')" title="Move to Breakeven (0% Risk)" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] transition cursor-pointer">🎯</button>` : '';
+          const lockBtn = pnlPct >= 2.0 ? `<button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'lock-profit')" title="Lock +2% Profit Floor" class="p-1 rounded bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 text-[11px] transition cursor-pointer">🔒</button>` : '';
+          const closeBtn = `<button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'close')" title="Square Off Position" class="p-1 rounded bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-[11px] transition cursor-pointer">✕</button>`;
+
           const controls = t.status !== 'CLOSED' ? `
             <div class="flex items-center justify-center gap-1">
-              <button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'breakeven')" title="Move to Breakeven" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] transition cursor-pointer">🎯</button>
-              <button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'lock-profit')" title="Lock +2% Profit Floor" class="p-1 rounded bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 text-[11px] transition cursor-pointer">🔒</button>
-              <button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'close')" title="Square Off Position" class="p-1 rounded bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-[11px] transition cursor-pointer">✕</button>
+              ${beBtn}
+              ${lockBtn}
+              ${closeBtn}
             </div>
           ` : `<span class="text-zinc-600 text-center block">&mdash;</span>`;
 

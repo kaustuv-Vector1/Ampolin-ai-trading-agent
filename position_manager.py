@@ -273,9 +273,35 @@ class PositionManager:
                     )
                     self.notifier.send_message(msg)
                     current_stage = "STAGE_PARTIAL_BOOKED"
+                    continue
 
-                # Stage 3: Trailing Stop along 20 EMA
+                # Stage 3: Trailing Stop along 20 EMA (or Full Target Exit)
                 if current_stage == "STAGE_PARTIAL_BOOKED":
+                    # Target Hit on remaining runner: bank 100% remaining profit
+                    if take_profit > entry_price and curr_price >= take_profit:
+                        if trade.get("broker_sl_order_id"):
+                            self.broker.cancel_broker_stop_loss(trade["broker_sl_order_id"])
+                        self.trade_logger.close_trade(order_id, exit_price=curr_price)
+                        final_pnl = round((curr_price - entry_price) * quantity, 2)
+                        logger.info(
+                            f"[STAGE TRANSITION] {ticker}: STAGE_PARTIAL_BOOKED -> CLOSED | "
+                            f"Closed remaining {quantity} shares at full target ₹{curr_price} | P&L: ₹{final_pnl} | "
+                            f"Trigger: Full Take-Profit Target ₹{take_profit} achieved (+{pct_gain:.2f}%)"
+                        )
+                        actions_taken.append({
+                            "ticker": ticker,
+                            "action": "TAKE_PROFIT_EXIT",
+                            "exit_price": curr_price,
+                            "pnl": final_pnl,
+                        })
+                        msg = (
+                            f"🎯 <b>FULL TAKE-PROFIT TARGET ACHIEVED - {ticker}</b>\n"
+                            f"Closed remaining {quantity} shares @ ₹{curr_price} (Target ₹{take_profit} reached)\n"
+                            f"Final Leg Realized Profit: ₹{final_pnl:,.2f} (+{pct_gain:.2f}%)"
+                        )
+                        self.notifier.send_message(msg)
+                        continue
+
                     if ema20 and curr_price < ema20:
                         # Cancel broker stop-loss to avoid double selling
                         if trade.get("broker_sl_order_id"):

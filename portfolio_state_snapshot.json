@@ -1,7 +1,7 @@
 {
   "version": "2.0.0",
-  "timestamp": "2026-11-01T21:51:38.830476",
-  "open_positions_count": 2,
+  "timestamp": "2026-11-02T21:54:47.164561",
+  "open_positions_count": 1,
   "total_trades_count": 4,
   "trades": [
     {
@@ -75,14 +75,14 @@
       "quantity": 79,
       "capital_allocated": 27563.89,
       "risk_amount": 742.6,
-      "status": "SIMULATED_FILLED",
-      "exit_price": null,
-      "pnl": -420.28,
-      "pnl_percentage": -1.52,
+      "status": "CLOSED",
+      "exit_price": 340.3,
+      "pnl": -680.19,
+      "pnl_percentage": -2.47,
       "confidence": 0.78,
       "rationale": "Strong multi-timeframe bullish alignment with Fast EMA above Slow EMA and weekly confluence. RSI is in the optimal 61.4 momentum sweet spot, supported by a 1.10x volume expansion. VectorBT backtest shows a solid 62.5% historical win rate, 1.61 profit factor, and positive expectancy, validating the EMA trend momentum setup.",
       "entry_time": "2026-10-30 15:18:23",
-      "exit_time": null,
+      "exit_time": "2026-11-02 21:54:45",
       "is_paper_trade": 1,
       "metadata_json": "{\"risk_reward_ratio\": 2.0, \"holding_period_days\": 5, \"key_risks\": \"Despite positive technicals, Mag-7 sector declines and recent insider selling activity pose mild sentiment headwinds that could test the stop loss if broader market volatility spikes.\", \"backtest_win_rate\": 0.625, \"backtest_expectancy\": 1012.43, \"raw_response\": {\"status\": \"success\", \"mode\": \"paper_trading\", \"orderId\": \"SIM-DHAN-20261030151823-AAPL\", \"message\": \"Order simulated under 1% account risk parameters.\"}}",
       "initial_quantity": 79,
@@ -126,6 +126,16 @@
     }
   ],
   "daily_pnl": [
+    {
+      "date": "2026-11-02",
+      "starting_capital": null,
+      "realized_pnl": -64543.23,
+      "unrealized_pnl": 232.0,
+      "total_trades": 4,
+      "win_count": 2,
+      "loss_count": 1,
+      "updated_at": "2026-11-02T21:54:47.155205"
+    },
     {
       "date": "2026-10-31",
       "starting_capital": null,
