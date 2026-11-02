@@ -19,11 +19,12 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
@@ -103,18 +104,16 @@ class InteractiveTelegramBot:
         )
         await update.message.reply_text(msg, parse_mode="HTML")
 
-    async def cmd_positions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self.is_authorized(update):
-            return
-
+    def _format_positions_msg(self):
         open_trades = self.logger.get_open_trades()
         if not open_trades:
-            await update.message.reply_text("📭 <b>No active open positions.</b>\nSystem is currently 100% in cash (₹1,00,000 virtual balance).", parse_mode="HTML")
-            return
+            return "📭 <b>No active open positions.</b>\nSystem is currently 100% in cash (₹1,00,000 virtual balance).", None
 
         lines = [f"📈 <b>ACTIVE OPEN POSITIONS ({len(open_trades)})</b>\n"]
+        keyboard = []
         for t in open_trades:
             ticker = t["ticker"]
+            clean_name = ticker.replace(".NS", "")
             is_nse = ticker.endswith(".NS")
             sym = "₹" if is_nse else "$"
             flag = "🇮🇳 NSE" if is_nse else "🇺🇸 Wall Street"
@@ -124,7 +123,7 @@ class InteractiveTelegramBot:
             qty = int(t["quantity"])
             invested = float(t.get("capital_allocated") or (entry * qty))
             current_val = round(curr * qty, 2)
-            gain_pct = ((curr - entry) / entry) * 100.0
+            gain_pct = ((curr - entry) / entry) * 100.0 if entry > 0 else 0.0
             pnl = (curr - entry) * qty if (curr and entry) else float(t.get("pnl") or 0.0)
 
             if pnl >= 0:
@@ -170,7 +169,83 @@ class InteractiveTelegramBot:
                 f"• Strategy Status: <code>{status_icon}</code>\n"
             )
 
-        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+            # Interactive 1-click action buttons for each active position
+            t_row = []
+            if gain_pct >= 0:
+                t_row.append(InlineKeyboardButton(f"🛡️ BE {clean_name}", callback_data=f"be:{t['order_id']}"))
+            if gain_pct >= 2.0:
+                t_row.append(InlineKeyboardButton(f"🔒 Lock +2% {clean_name}", callback_data=f"lock:{t['order_id']}"))
+            t_row.append(InlineKeyboardButton(f"✕ Close {clean_name}", callback_data=f"close:{t['order_id']}"))
+            keyboard.append(t_row)
+
+        keyboard.append([InlineKeyboardButton("🔄 Refresh Live Positions", callback_data="refresh:positions")])
+        return "\n".join(lines), InlineKeyboardMarkup(keyboard)
+
+    async def cmd_positions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not self.is_authorized(update):
+            return
+
+        text, markup = self._format_positions_msg()
+        if markup:
+            await update.message.reply_text(text, parse_mode="HTML", reply_markup=markup)
+        else:
+            await update.message.reply_text(text, parse_mode="HTML")
+
+    async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        if not self.is_authorized(update):
+            await query.answer("⛔ Unauthorized access.", show_alert=True)
+            return
+
+        data = query.data or ""
+        if data == "refresh:positions":
+            await query.answer("Refreshing live positions...")
+            text, markup = self._format_positions_msg()
+            try:
+                await query.edit_message_text(text, parse_mode="HTML", reply_markup=markup)
+            except Exception:
+                pass
+            return
+
+        parts = data.split(":", 1)
+        action = parts[0]
+        order_id = parts[1] if len(parts) > 1 else ""
+
+        open_trades = self.logger.get_open_trades()
+        target = next((t for t in open_trades if t["order_id"] == order_id), None)
+        if not target:
+            await query.answer("Position not found or already closed.", show_alert=True)
+            text, markup = self._format_positions_msg()
+            try:
+                await query.edit_message_text(text, parse_mode="HTML", reply_markup=markup)
+            except Exception:
+                pass
+            return
+
+        ticker = target["ticker"]
+        entry = float(target["entry_price"])
+        curr = float(target.get("current_price") or entry)
+
+        if action == "close":
+            self.logger.close_trade(order_id, exit_price=curr)
+            await query.answer(f"✅ Closed {ticker} @ {curr:,.2f}!", show_alert=True)
+        elif action == "be":
+            with self.logger._get_connection() as conn:
+                conn.execute("UPDATE trades SET stop_loss = ?, stage = 'STAGE_BREAKEVEN' WHERE order_id = ?", (entry, order_id))
+                conn.commit()
+            await query.answer(f"🛡️ Stop loss for {ticker} moved to Entry ({entry:,.2f})!", show_alert=True)
+        elif action == "lock":
+            locked_sl = round(entry * 1.02, 2)
+            with self.logger._get_connection() as conn:
+                conn.execute("UPDATE trades SET stop_loss = ?, stage = 'STAGE_PROFIT_LOCKED' WHERE order_id = ?", (locked_sl, order_id))
+                conn.commit()
+            await query.answer(f"🔒 +2% Profit Floor locked for {ticker} @ {locked_sl:,.2f}!", show_alert=True)
+
+        text, markup = self._format_positions_msg()
+        try:
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=markup)
+        except Exception:
+            pass
 
     async def cmd_pnl(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self.is_authorized(update):
@@ -445,6 +520,7 @@ class InteractiveTelegramBot:
         app.add_handler(CommandHandler("rules", self.cmd_rules))
         app.add_handler(CommandHandler("health", self.cmd_health))
         app.add_handler(CommandHandler("pcr", self.cmd_pcr))
+        app.add_handler(CallbackQueryHandler(self.handle_callback))
 
         # Natural language handler
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_natural_chat))

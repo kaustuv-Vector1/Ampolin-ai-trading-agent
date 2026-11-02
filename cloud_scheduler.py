@@ -132,6 +132,7 @@ class CloudTradingDaemon:
         schedule.every().day.at("09:35", "America/New_York").do(lambda: self.scan_us_cycle("09:35 ET US OPEN"))
         schedule.every().day.at("12:30", "America/New_York").do(lambda: self.scan_us_cycle("12:30 ET US MID-DAY"))
         schedule.every().day.at("15:45", "America/New_York").do(self.pre_close_sweep)
+        schedule.every().day.at("16:05", "America/New_York").do(self.eod_cycle)
 
         # Recurring Autonomous Monitoring: sweeps positions & auto-executes setups every 15 minutes during active sessions
         schedule.every(15).minutes.do(self.periodic_market_check)

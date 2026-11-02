@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "timestamp": "2026-11-02T21:54:47.164561",
+  "timestamp": "2026-11-02T22:03:16.891842",
   "open_positions_count": 1,
   "total_trades_count": 4,
   "trades": [
@@ -17,8 +17,8 @@
       "risk_amount": 740.04,
       "status": "SIMULATED_FILLED",
       "exit_price": null,
-      "pnl": 232.0,
-      "pnl_percentage": 1.2,
+      "pnl": 563.0,
+      "pnl_percentage": 2.91,
       "confidence": 0.85,
       "rationale": "Strong trend momentum expansion with Fast EMA above Slow EMA and RSI in the optimal sweet spot of 61.9. VectorBT backtest confirms a high win rate of 62.5% and a robust profit factor of 3.00, supporting continuation toward the 1:2.0 risk-reward target.",
       "entry_time": "2026-10-29 23:43:45",
@@ -28,7 +28,7 @@
       "initial_quantity": 2,
       "stage": "STAGE_INITIAL",
       "partial_exit_taken": 0,
-      "current_price": 9780.0,
+      "current_price": 9945.5,
       "one_r": 370.02,
       "broker_sl_order_id": null,
       "broker_sl_price": null,
@@ -82,7 +82,7 @@
       "confidence": 0.78,
       "rationale": "Strong multi-timeframe bullish alignment with Fast EMA above Slow EMA and weekly confluence. RSI is in the optimal 61.4 momentum sweet spot, supported by a 1.10x volume expansion. VectorBT backtest shows a solid 62.5% historical win rate, 1.61 profit factor, and positive expectancy, validating the EMA trend momentum setup.",
       "entry_time": "2026-10-30 15:18:23",
-      "exit_time": "2026-11-02 21:54:45",
+      "exit_time": "2026-10-31 16:00:00",
       "is_paper_trade": 1,
       "metadata_json": "{\"risk_reward_ratio\": 2.0, \"holding_period_days\": 5, \"key_risks\": \"Despite positive technicals, Mag-7 sector declines and recent insider selling activity pose mild sentiment headwinds that could test the stop loss if broader market volatility spikes.\", \"backtest_win_rate\": 0.625, \"backtest_expectancy\": 1012.43, \"raw_response\": {\"status\": \"success\", \"mode\": \"paper_trading\", \"orderId\": \"SIM-DHAN-20261030151823-AAPL\", \"message\": \"Order simulated under 1% account risk parameters.\"}}",
       "initial_quantity": 79,
@@ -129,12 +129,12 @@
     {
       "date": "2026-11-02",
       "starting_capital": null,
-      "realized_pnl": -64543.23,
-      "unrealized_pnl": 232.0,
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 563.0,
       "total_trades": 4,
       "win_count": 2,
       "loss_count": 1,
-      "updated_at": "2026-11-02T21:54:47.155205"
+      "updated_at": "2026-11-02T22:02:54.791073"
     },
     {
       "date": "2026-10-31",
