@@ -14,7 +14,7 @@ from typing import Optional, List, Dict, Any
 
 import uvicorn
 from fastapi import FastAPI, BackgroundTasks, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -48,29 +48,57 @@ assets_path = Path(__file__).resolve().parent / "assets"
 if assets_path.exists():
     app.mount("/static", StaticFiles(directory=str(assets_path)), name="static")
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    fav_path = assets_path / "favicon.ico"
+    if fav_path.exists():
+        return FileResponse(str(fav_path), media_type="image/x-icon")
+    icon_path = assets_path / "icon-192.png"
+    if icon_path.exists():
+        return FileResponse(str(icon_path), media_type="image/png")
+    return FileResponse(str(assets_path / "ampolin_icon_sq.png"), media_type="image/png")
+
 @app.get("/manifest.json")
 def pwa_manifest():
     return JSONResponse({
-        "name": "Ampolin AI Trading Agent",
-        "short_name": "Ampolin AI",
+        "name": "Ampolin Trading",
+        "short_name": "Ampolin",
         "description": "Autonomous Swing Trading Terminal for NSE & Wall Street",
         "start_url": "/",
+        "id": "/",
         "display": "standalone",
-        "background_color": "#000000",
-        "theme_color": "#000000",
-        "orientation": "portrait-primary",
+        "background_color": "#09090b",
+        "theme_color": "#09090b",
+        "orientation": "any",
         "icons": [
             {
-                "src": "/static/ampolin_icon_sq.png",
+                "src": "/static/icon-192.png",
                 "sizes": "192x192",
                 "type": "image/png",
-                "purpose": "any maskable"
+                "purpose": "any"
+            },
+            {
+                "src": "/static/icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any"
+            },
+            {
+                "src": "/static/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "maskable"
+            },
+            {
+                "src": "/static/icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable"
             },
             {
                 "src": "/static/ampolin_icon_sq.png",
                 "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "any maskable"
+                "type": "image/png"
             }
         ]
     })
@@ -431,13 +459,19 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Ampolin AI Trading Agent | Terminal</title>
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" type="image/png" href="/static/ampolin_icon_sq.png">
-  <link rel="apple-touch-icon" href="/static/ampolin_icon_sq.png">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="/static/icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="/static/icon-512.png">
+  <meta name="msapplication-TileImage" content="/static/icon-512.png">
+  <meta name="msapplication-TileColor" content="#09090b">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ampolin AI">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#09090b">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
