@@ -211,6 +211,14 @@
 
     <div class="flex items-center justify-between sm:justify-end gap-2 text-xs">
       <div class="flex items-center fintech-card px-3 py-1.5 rounded-lg gap-2 flex-1 sm:flex-initial">
+        <span class="text-zinc-500 text-[11px]">Market:</span>
+        <select id="select-market" onchange="updateMarketLabel()" class="bg-transparent border-0 text-white mono text-xs focus:outline-none cursor-pointer">
+          <option value="NSE" selected class="bg-zinc-900">🇮🇳 NSE</option>
+          <option value="US" class="bg-zinc-900">🇺🇸 Wall St</option>
+        </select>
+      </div>
+
+      <div class="flex items-center fintech-card px-3 py-1.5 rounded-lg gap-2 flex-1 sm:flex-initial">
         <span class="text-zinc-500 text-[11px]">Timeframe:</span>
         <select id="select-tf" class="bg-transparent border-0 text-white mono text-xs focus:outline-none cursor-pointer">
           <option value="1d" selected class="bg-zinc-900">1D (Daily Swing)</option>
@@ -1243,9 +1251,18 @@
       }
     }
 
+    function updateMarketLabel() {
+      const market = document.getElementById('select-market') ? document.getElementById('select-market').value : 'NSE';
+      const scanBtn = document.getElementById('btn-scan');
+      if (scanBtn) {
+        scanBtn.innerHTML = `<i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan ${market}`;
+      }
+    }
+
     async function runPipeline() {
       const btn = document.getElementById('btn-pipeline');
       const tf = document.getElementById('select-tf').value;
+      const market = document.getElementById('select-market') ? document.getElementById('select-market').value : 'NSE';
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-black"></i> Executing Pipeline...';
 
@@ -1253,7 +1270,7 @@
         const res = await fetch('/api/run-pipeline', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ timeframe: tf, dry_run: true })
+          body: JSON.stringify({ timeframe: tf, market: market, dry_run: true })
         });
         const data = await res.json();
         await runScan();
@@ -1270,23 +1287,24 @@
     async function runScan() {
       const btn = document.getElementById('btn-scan');
       const tf = document.getElementById('select-tf').value;
+      const market = document.getElementById('select-market') ? document.getElementById('select-market').value : 'NSE';
       btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Scanning ${market}...`;
 
       try {
         const res = await fetch('/api/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ timeframe: tf, dry_run: true })
+          body: JSON.stringify({ timeframe: tf, market: market, dry_run: true })
         });
         const data = await res.json();
-        renderCandidates(data.approved_candidates || []);
+        renderCandidates(data.approved_candidates || data.data || []);
         renderAIDecision(data.ai_decisions || []);
       } catch (e) {
         alert('Scan error: ' + e);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan NSE';
+        btn.innerHTML = `<i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan ${market}`;
       }
     }
 

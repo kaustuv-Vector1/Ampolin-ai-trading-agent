@@ -129,6 +129,7 @@ latest_scan_results = {
 class ScanRequest(BaseModel):
     timeframe: str = "1d"
     tickers: Optional[List[str]] = None
+    market: Optional[str] = "NSE"
     dry_run: bool = True
 
 
@@ -399,8 +400,15 @@ def get_chart_data(ticker: str = Query(..., description="Ticker symbol")):
 
 @app.post("/api/scan")
 def trigger_scan(req: ScanRequest):
-    selected_tickers = req.tickers or NIFTY_50_TICKERS[:12]  # top liquid batch for fast response
-    setups = scanner.scan_universe(selected_tickers, timeframe=req.timeframe)
+    target_market = (req.market or "NSE").upper()
+    if req.tickers:
+        selected_tickers = req.tickers
+    elif target_market == "US":
+        selected_tickers = US_STOCKS_TICKERS
+    else:
+        selected_tickers = NIFTY_50_TICKERS
+
+    setups = scanner.scan_universe(selected_tickers, market=target_market, timeframe=req.timeframe)
     approved_pairs = sandbox.filter_candidates(setups)
 
     serialized_approved = []
@@ -416,22 +424,32 @@ def trigger_scan(req: ScanRequest):
 
     latest_scan_results["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     latest_scan_results["timeframe"] = req.timeframe
+    latest_scan_results["market"] = target_market
     latest_scan_results["candidates"] = [s.to_dict() for s in setups]
     latest_scan_results["approved_setups"] = serialized_approved
 
     return {
         "status": "SUCCESS",
+        "market": target_market,
         "candidates_count": len(setups),
         "approved_count": len(approved_pairs),
         "data": serialized_approved,
+        "approved_candidates": serialized_approved,
+        "ai_decisions": ai_decisions,
     }
 
 
 @app.post("/api/run-pipeline")
 def run_full_pipeline(req: ScanRequest):
     pipeline = AmpolinPipeline(dry_run=req.dry_run, timeframe=req.timeframe)
-    tickers = req.tickers or NIFTY_50_TICKERS[:15]
-    result = pipeline.run_pipeline(tickers=tickers, max_trades_to_execute=3)
+    target_market = (req.market or "NSE").upper()
+    if req.tickers:
+        tickers = req.tickers
+    elif target_market == "US":
+        tickers = US_STOCKS_TICKERS
+    else:
+        tickers = NIFTY_50_TICKERS
+    result = pipeline.run_pipeline(tickers=tickers, market=target_market, max_trades_to_execute=3)
     return result
 
 
