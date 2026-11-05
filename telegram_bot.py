@@ -52,6 +52,10 @@ class InteractiveTelegramBot:
         self.authorized_chat_id = str(TELEGRAM_CHAT_ID or os.getenv("TELEGRAM_CHAT_ID", ""))
         self.logger = TradeLogger()
         self.regime_analyzer = MarketRegimeAnalyzer(sample_size=20)
+        from broker import DhanBroker
+        from telegram_notifier import TelegramNotifier
+        self.broker = DhanBroker(dry_run=True)
+        self.notifier = TelegramNotifier()
         self.app = None
         self.llm = MultiProviderLLM()
         self.chat_memories = {}  # Stores recent dialogue per chat_id
@@ -407,6 +411,16 @@ class InteractiveTelegramBot:
 
         chat_id = str(update.effective_chat.id)
         logger.info(f"Incoming Telegram chat message: '{user_text}' from chat_id: {chat_id}")
+
+        # Check for direct conversational trade actions (Sell, Close, Lock Profit, Breakeven)
+        try:
+            from trade_actions import process_natural_chat_trade_command
+            action_reply = process_natural_chat_trade_command(user_text, trade_logger=self.logger, broker=self.broker, notifier=self.notifier)
+            if action_reply:
+                await update.message.reply_text(action_reply, parse_mode="HTML")
+                return
+        except Exception as e:
+            logger.warning(f"Natural trade command processing error in Telegram: {e}")
 
         try:
             # Show typing status

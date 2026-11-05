@@ -145,6 +145,15 @@ def in_app_chat(req: ChatRequest):
     if not user_msg:
         return {"reply": "Please type a message to start chatting!"}
 
+    # Check for direct conversational trade actions (Sell, Close, Lock Profit, Breakeven)
+    try:
+        from trade_actions import process_natural_chat_trade_command
+        action_reply = process_natural_chat_trade_command(user_msg, trade_logger=trade_logger, broker=broker, notifier=notifier)
+        if action_reply:
+            return {"reply": action_reply}
+    except Exception as e:
+        logger.warning(f"Natural trade command processing error: {e}")
+
     open_trades = trade_logger.get_open_trades()
     positions_str = ", ".join([f"{t['ticker']} (entry: {t['entry_price']}, stage: {t.get('stage','INITIAL')})" for t in open_trades]) or "None (100% Cash)"
     summary = trade_logger.calculate_daily_summary()

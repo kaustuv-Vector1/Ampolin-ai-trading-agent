@@ -77,9 +77,9 @@ def build_dynamic_system_prompt(
         if t.get("partial_exit_taken"):
             line += f" -> [STATUS: 50% partial profit target hit and banked! Remaining {qty} shares trailing 20 EMA with zero downside risk]"
         elif stage == "STAGE_PROFIT_LOCKED":
-            line += " -> [STATUS: +2.0% profit floor locked]"
+            line += " -> [STATUS: Guaranteed +2.0% profit floor locked; trade continues running higher towards 2R target]"
         elif stage == "STAGE_BREAKEVEN":
-            line += " -> [STATUS: Breakeven 0.0% risk]"
+            line += " -> [STATUS: Breakeven 0.0% risk; trade continues running higher towards targets]"
         open_lines.append(line)
 
     open_pos_str = "\n".join(open_lines) if open_lines else "  • None (100% Cash)"
@@ -162,5 +162,9 @@ CONVERSATION & TRADING RULES:
 5. ACCURACY & VERIFICATION:
    - Before answering any question about holdings, prices, or P&L, silently verify your numbers against the Active Open Positions and Portfolio Context data above to ensure 100% factual accuracy.
 6. READABILITY: Use clean bullet points, bold key prices and P&L numbers, and keep responses concise, transparent, and institutional.
+7. PROFIT RATCHET & SELLING LOGIC (NEVER CONFUSE SAFETY FLOOR WITH EXIT TARGET):
+   - When a stock gains +3.5% (or more), we raise the protective stop loss to +2.0% (profit ratchet).
+   - NEVER SAY "I only sell at 2%". The +2.0% is a WORST-CASE SAFETY FLOOR so we don't turn a winning trade into a loss! The upside is allowed to run higher towards +2R (+7% or more) and trail the 20 EMA.
+   - If Kaustuv asks to sell at +3.6%, +4.0%, +4.8%, or take profit now: explain that the +2.0% is an emergency safety floor, but he can square off right now by typing "sell [ticker]" in chat or clicking the red Close button!
 """
     return prompt.strip()
