@@ -71,23 +71,23 @@ DEFAULT_TIMEFRAME = os.getenv("DEFAULT_TIMEFRAME", "1d")  # "1d" or "4h"
 EMA_FAST = int(os.getenv("EMA_FAST", "20"))
 EMA_SLOW = int(os.getenv("EMA_SLOW", "50"))
 RSI_PERIOD = int(os.getenv("RSI_PERIOD", "14"))
-RSI_MIN = float(os.getenv("RSI_MIN", "48.0"))
-RSI_MAX = float(os.getenv("RSI_MAX", "68.0"))
+RSI_MIN = float(os.getenv("RSI_MIN", "45.0"))
+RSI_MAX = float(os.getenv("RSI_MAX", "72.0"))
 ATR_PERIOD = int(os.getenv("ATR_PERIOD", "14"))
 ATR_SL_MULTIPLIER = float(os.getenv("ATR_SL_MULTIPLIER", "1.5"))
 TP_RISK_MULTIPLIER = float(os.getenv("TP_RISK_MULTIPLIER", "2.0"))
 
-# VectorBT Sandbox Filter Requirements (Upgraded for High Win Rate)
-MIN_WIN_RATE = float(os.getenv("MIN_WIN_RATE", "0.52"))            # >= 52% historical win rate required
+# VectorBT Sandbox Filter Requirements (Tuned for High Expectancy & Agility)
+MIN_WIN_RATE = float(os.getenv("MIN_WIN_RATE", "0.45"))            # >= 45% historical win rate required (1:2 R:R makes this highly profitable)
 MIN_EXPECTANCY = float(os.getenv("MIN_EXPECTANCY", "0.0"))        # Positive expectancy required
-MIN_PROFIT_FACTOR = float(os.getenv("MIN_PROFIT_FACTOR", "1.50"))  # Minimum 1.50 Profit Factor required
+MIN_PROFIT_FACTOR = float(os.getenv("MIN_PROFIT_FACTOR", "1.25"))  # Minimum 1.25 Profit Factor required
 BACKTEST_LOOKBACK_DAYS = int(os.getenv("BACKTEST_LOOKBACK_DAYS", "90"))
 
 # Institutional Intelligence & Anti-Chasing Settings
 CHECK_WEEKLY_TREND = True            # Confirms Higher Timeframe (Weekly) 20 EMA > 50 EMA bullish alignment
-MIN_VOLUME_EXPANSION_RATIO = 1.15    # Volume must exceed 1.15x the 20-day average
-REQUIRE_CANDLE_STRENGTH = 0.55       # Close must finish in upper 45% of high-low range (bullish bar)
-MAX_EMA20_DISTANCE_PCT = 2.2         # Reject if price extended > 2.2% above 20 EMA (prevents chasing tops)
+MIN_VOLUME_EXPANSION_RATIO = 1.00    # Volume at or above average
+REQUIRE_CANDLE_STRENGTH = 0.40       # Solid bar close
+MAX_EMA20_DISTANCE_PCT = 3.8         # Up to 3.8% above 20 EMA allows natural daily breakout candles without chasing tops
 
 # Nifty 50 Tickers (NSE suffix .NS for yfinance)
 NIFTY_50_TICKERS = [

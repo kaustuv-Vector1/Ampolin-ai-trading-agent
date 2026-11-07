@@ -86,17 +86,35 @@ class CloudTradingDaemon:
         if not self.is_nse_market_open():
             return
 
-        logger.info(f"--- [{session_label}] EXECUTING NIFTY 50 AUTONOMOUS SCAN ---")
+        logger.info(f"--- [{session_label}] EXECUTING NIFTY 50 AUTONOMOUS SCAN (1D) ---")
         result = self.pipeline.run_pipeline(market="NSE", max_trades_to_execute=2)
-        logger.info(f"Scan cycle complete: {result.get('status')} | Trades: {len(result.get('executed_trades', []))}")
+        trades = result.get("executed_trades", [])
+        if not trades and result.get("status") == "NO_CANDIDATES":
+            logger.info("Daily scan found no setups; running 4H Tactical Scan for agile swing entries...")
+            try:
+                p4h = AmpolinPipeline(dry_run=self.dry_run, timeframe="4h")
+                res_4h = p4h.run_pipeline(market="NSE", max_trades_to_execute=1)
+                trades = res_4h.get("executed_trades", [])
+            except Exception as e:
+                logger.warning(f"4H scan attempt error: {e}")
+        logger.info(f"Scan cycle complete: {result.get('status')} | Trades: {len(trades)}")
 
     def scan_us_cycle(self, session_label: str):
         if not self.is_us_market_open():
             return
 
-        logger.info(f"--- [{session_label}] EXECUTING WALL STREET (US) AUTONOMOUS SCAN ---")
+        logger.info(f"--- [{session_label}] EXECUTING WALL STREET (US) AUTONOMOUS SCAN (1D) ---")
         result = self.pipeline.run_pipeline(market="US", max_trades_to_execute=2)
-        logger.info(f"Wall Street scan cycle complete: {result.get('status')} | Trades: {len(result.get('executed_trades', []))}")
+        trades = result.get("executed_trades", [])
+        if not trades and result.get("status") == "NO_CANDIDATES":
+            logger.info("US Daily scan found no setups; running 4H Tactical Scan for agile momentum...")
+            try:
+                p4h = AmpolinPipeline(dry_run=self.dry_run, timeframe="4h")
+                res_4h = p4h.run_pipeline(market="US", max_trades_to_execute=1)
+                trades = res_4h.get("executed_trades", [])
+            except Exception as e:
+                logger.warning(f"US 4H scan attempt error: {e}")
+        logger.info(f"Wall Street scan cycle complete: {result.get('status')} | Trades: {len(trades)}")
 
     def pre_close_sweep(self):
         if not self.is_market_day():

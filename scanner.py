@@ -201,8 +201,8 @@ class SwingScanner:
         if len(df) < 55:
             return None
 
-        # Clean nulls
-        clean_df = df.dropna(subset=["EMA_FAST", "EMA_SLOW", "RSI", "ATR"]).copy()
+        # Clean nulls (must ensure valid prices so post-market/weekend empty rows are dropped)
+        clean_df = df.dropna(subset=["Close", "Open", "High", "Low", "EMA_FAST", "EMA_SLOW", "RSI", "ATR"]).copy()
         if len(clean_df) < 5:
             return None
 
@@ -213,6 +213,7 @@ class SwingScanner:
         rsi_max = float(self.rules.get("rsi_max", RSI_MAX))
         atr_sl_mult = float(self.rules.get("atr_sl_multiplier", ATR_SL_MULTIPLIER))
         tp_mult = float(self.rules.get("tp_risk_multiplier", TP_RISK_MULTIPLIER))
+        max_dist_pct = float(self.rules.get("max_ema20_distance_pct", MAX_EMA20_DISTANCE_PCT))
 
         close = float(curr["Close"])
         open_price = float(curr["Open"])
@@ -226,13 +227,12 @@ class SwingScanner:
         vol_ma = float(curr["VOL_MA20"]) if not pd.isna(curr["VOL_MA20"]) else volume
 
         # Breakout Criteria:
-        # 1. Trend alignment: EMA 20 > EMA 50 (bullish moving average alignment)
-        # 2. Price positioning: Close > EMA 20
-        # 3. Fresh breakout trigger:
+        # 1. Trend alignment: EMA 20 >= EMA 50 (or within 0.5% during bottoming reversal) & Close > EMA 20
+        # 2. Fresh breakout trigger:
         #    a) Previous bar was below/at EMA 20 and current bar broke above EMA 20, OR
         #    b) EMA 20 recently crossed EMA 50 (Golden Cross within last 3 bars), OR
-        #    c) Bullish expansion candle (Close > Open and Close > EMA 20) with volume > 0.8x avg
-        is_bullish_alignment = ema_fast > ema_slow and close > ema_fast
+        #    c) Bullish expansion candle (Close > Open and Close > EMA 20)
+        is_bullish_alignment = (ema_fast >= ema_slow * 0.995) and (close > ema_fast)
         fresh_cross_ema20 = (prev["Close"] <= prev["EMA_FAST"]) and (close > ema_fast)
         recent_golden_cross = any(
             clean_df.iloc[i]["EMA_FAST"] > clean_df.iloc[i]["EMA_SLOW"]
@@ -245,13 +245,13 @@ class SwingScanner:
         if not breakout_valid:
             return None
 
-        # 3.5 Anti-Chasing Ceiling: Reject overextended setups (> 2.2% above 20 EMA)
+        # 3.5 Anti-Chasing Ceiling: Reject overextended setups
         ema_distance_pct = ((close - ema_fast) / ema_fast) * 100.0
-        if ema_distance_pct > MAX_EMA20_DISTANCE_PCT:
+        if ema_distance_pct > max_dist_pct:
             return None
 
         # 4. RSI Momentum Filter:
-        # Must be in sweet-spot range (48 to 68) - avoids oversold chop & overextended tops
+        # Must be in momentum corridor (45 to 72) - avoids oversold chop & blow-off tops
         if not (rsi_min <= rsi <= rsi_max):
             return None
 
@@ -263,8 +263,8 @@ class SwingScanner:
         # 6. Institutional Candlestick & Volume Check
         bar_range = high - low
         candle_strength = round((close - low) / bar_range, 2) if bar_range > 0 else 0.5
-        if REQUIRE_CANDLE_STRENGTH and candle_strength < 0.35:
-            # Rejection wick - close is in bottom 35% of bar (bearish rejection)
+        if REQUIRE_CANDLE_STRENGTH and candle_strength < 0.25:
+            # Severe rejection wick - close is in bottom 25% of bar (heavy selling rejection)
             return None
 
         # 7. Multi-Timeframe Weekly Trend Alignment
