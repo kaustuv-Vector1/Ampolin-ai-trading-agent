@@ -7,6 +7,7 @@ Allows the user to chat directly with Ampolin AI on Telegram:
 """
 
 import asyncio
+from datetime import datetime
 import logging
 import os
 import re
@@ -100,7 +101,7 @@ class InteractiveTelegramBot:
             "📊 <b>AMPOLIN AI SYSTEM STATUS</b>\n\n"
             f"• <b>Market Regime:</b> <code>{regime.breadth_regime}</code>\n"
             f"• <b>India VIX:</b> {regime.india_vix} ({regime.vix_regime})\n"
-            f"• <b>Nifty Breadth:</b> {regime.market_breadth_pct:.1f}% stocks > 50 EMA\n"
+            f"• <b>Nifty Breadth:</b> {regime.market_breadth_pct:.1f}% stocks &gt; 50 EMA\n"
             f"• <b>Can Trade Longs:</b> {'✅ Yes' if regime.can_trade_longs else '⛔ Paused'}\n"
             f"• <b>Dynamic Risk/Trade:</b> {regime.dynamic_risk_pct * 100:.2f}%\n"
             f"• <b>Active Positions:</b> {len(open_trades)}\n"
@@ -110,8 +111,23 @@ class InteractiveTelegramBot:
 
     def _format_positions_msg(self):
         open_trades = self.logger.get_open_trades()
+        summary = self.logger.calculate_daily_summary()
+        today_realized = float(summary.get("realized_pnl", 0.0))
+        total_realized = float(summary.get("total_realized_pnl", today_realized))
+        unrealized = float(summary.get("unrealized_pnl", 0.0))
+        total_pnl = round(total_realized + unrealized, 2)
+        portfolio_equity = round(100000.0 + total_pnl, 2)
+        now_str = datetime.now().strftime("%H:%M:%S")
+
         if not open_trades:
-            return "📭 <b>No active open positions.</b>\nSystem is currently 100% in cash (₹1,00,000 virtual balance).", None
+            refresh_kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refresh Live Positions", callback_data="refresh:positions")]])
+            msg = (
+                "📭 <b>No active open positions.</b>\n\n"
+                f"• <b>Portfolio Allocation:</b> 100% Cash Buffer (₹{portfolio_equity:,.2f})\n"
+                "• <b>Status:</b> Actively scanning NSE and Wall Street for high-probability setups.\n\n"
+                f"🕒 <i>Last checked: {now_str} IST</i>"
+            )
+            return msg, refresh_kb
 
         lines = [f"📈 <b>ACTIVE OPEN POSITIONS ({len(open_trades)})</b>\n"]
         keyboard = []
@@ -139,7 +155,7 @@ class InteractiveTelegramBot:
                 gain_str = f"{gain_pct:.2f}%"
                 pnl_icon = "🔴"
 
-            # Check if this position had a partial exit taken (FIX 3)
+            # Check if this position had a partial exit taken
             partial_pnl_line = ""
             if t.get("partial_exit_taken"):
                 with self.logger._get_connection() as conn:
@@ -182,6 +198,7 @@ class InteractiveTelegramBot:
             t_row.append(InlineKeyboardButton(f"✕ Close {clean_name}", callback_data=f"close:{t['order_id']}"))
             keyboard.append(t_row)
 
+        lines.append(f"🕒 <i>Last updated: {now_str} IST</i>")
         keyboard.append([InlineKeyboardButton("🔄 Refresh Live Positions", callback_data="refresh:positions")])
         return "\n".join(lines), InlineKeyboardMarkup(keyboard)
 
@@ -230,19 +247,16 @@ class InteractiveTelegramBot:
         entry = float(target["entry_price"])
         curr = float(target.get("current_price") or entry)
 
+        from trade_actions import execute_close_trade, execute_lock_profit, execute_breakeven
         if action == "close":
-            self.logger.close_trade(order_id, exit_price=curr)
+            execute_close_trade(target, trade_logger=self.logger, broker=self.broker, notifier=None)
             await query.answer(f"✅ Closed {ticker} @ {curr:,.2f}!", show_alert=True)
         elif action == "be":
-            with self.logger._get_connection() as conn:
-                conn.execute("UPDATE trades SET stop_loss = ?, stage = 'STAGE_BREAKEVEN' WHERE order_id = ?", (entry, order_id))
-                conn.commit()
+            execute_breakeven(target, trade_logger=self.logger, broker=self.broker, notifier=None)
             await query.answer(f"🛡️ Stop loss for {ticker} moved to Entry ({entry:,.2f})!", show_alert=True)
         elif action == "lock":
             locked_sl = round(entry * 1.02, 2)
-            with self.logger._get_connection() as conn:
-                conn.execute("UPDATE trades SET stop_loss = ?, stage = 'STAGE_PROFIT_LOCKED' WHERE order_id = ?", (locked_sl, order_id))
-                conn.commit()
+            execute_lock_profit(target, trade_logger=self.logger, broker=self.broker, notifier=None)
             await query.answer(f"🔒 +2% Profit Floor locked for {ticker} @ {locked_sl:,.2f}!", show_alert=True)
 
         text, markup = self._format_positions_msg()
@@ -257,9 +271,10 @@ class InteractiveTelegramBot:
 
         summary = self.logger.calculate_daily_summary()
         open_trades = self.logger.get_open_trades()
-        realized = summary.get("realized_pnl", 0.0)
-        unrealized = summary.get("unrealized_pnl", 0.0)
-        total = summary.get("total_pnl", 0.0)
+        today_realized = float(summary.get("realized_pnl", 0.0))
+        total_realized = float(summary.get("total_realized_pnl", today_realized))
+        unrealized = float(summary.get("unrealized_pnl", 0.0))
+        total_net = round(total_realized + unrealized, 2)
 
         starting_capital = 100000.0
         from market_hours import get_usd_inr_rate, is_us_market_open, is_nse_market_open, NY_TZ
@@ -270,12 +285,14 @@ class InteractiveTelegramBot:
             is_usd = not t["ticker"].endswith(".NS") and not t["ticker"].endswith(".BO")
             deployed_margin += (cap * usd_rate) if is_usd else cap
 
-        available_cash = round(starting_capital - deployed_margin + realized, 2)
-        portfolio_equity = round(starting_capital + total, 2)
+        available_cash = round(starting_capital - deployed_margin + total_realized, 2)
+        portfolio_equity = round(starting_capital + total_net, 2)
 
-        pnl_sign = "+" if total >= 0 else ""
-        icon = "🟢" if total >= 0 else "🔴"
+        pnl_str = f"-₹{abs(total_net):,.2f}" if total_net < 0 else f"+₹{total_net:,.2f}"
+        icon = "🟢" if total_net >= 0 else "🔴"
         unrealized_icon = "🟢" if unrealized >= 0 else "🔴"
+        realized_icon = "🟢" if total_realized >= 0 else "🔴"
+        cum_realized_str = f"-₹{abs(total_realized):,.2f}" if total_realized < 0 else f"+₹{total_realized:,.2f}"
 
         now_ny = datetime.now(NY_TZ)
         is_us_open = is_us_market_open(now_ny)
@@ -283,18 +300,19 @@ class InteractiveTelegramBot:
 
         msg = (
             f"💼 <b>AMPOLIN PAPER TRADING FUNDS & P&L</b>\n\n"
-            f"• <b>Total Account Equity:</b> <b>₹{portfolio_equity:,.2f}</b> ({pnl_sign}₹{total:,.2f})\n"
+            f"• <b>Total Account Equity:</b> <b>₹{portfolio_equity:,.2f}</b> ({pnl_str}) {icon}\n"
             f"• <b>Starting Paper Capital:</b> ₹{starting_capital:,.2f}\n"
             f"• <b>Available Free Cash:</b> <b>₹{available_cash:,.2f}</b>\n"
             f"• <b>Invested Capital Deployed:</b> <b>₹{deployed_margin:,.2f}</b>\n\n"
-            f"• <b>Realized P&L (Banked Profit):</b> <b>+₹{realized:,.2f}</b> 💰\n"
+            f"• <b>Cumulative Realized P&L:</b> {realized_icon} <b>{cum_realized_str}</b> 💰\n"
+            f"• <b>Today's Realized P&L:</b> <b>{'+' if today_realized >= 0 else ''}₹{today_realized:,.2f}</b>\n"
             f"• <b>Unrealized (Open) P&L:</b> {unrealized_icon} <b>{'+' if unrealized >= 0 else ''}₹{unrealized:,.2f}</b>\n"
             f"• <b>Active Positions:</b> {len(open_trades)} stocks\n"
             f"• <b>Win Rate:</b> {summary.get('win_rate', 0.0)*100:.1f}%\n\n"
             f"🕒 <b>Market Status:</b>\n"
             f"• NSE (India): {'🟢 Open & Active' if is_nse_market_open() else '🔴 Closed (09:15 - 15:30 IST)'}\n"
             f"• Wall Street (US): {us_status_text}\n\n"
-            f"💡 <i>Realized profit of +₹{realized:,.2f} is permanently banked. Remaining open shares are protected with trailing stops!</i>"
+            f"💡 <i>All closed trades are permanently recorded in SQLite with auto-synced JSON snapshots.</i>"
         )
         await update.message.reply_text(msg, parse_mode="HTML")
 
@@ -348,10 +366,10 @@ class InteractiveTelegramBot:
             "• <b>Daily Drawdown Circuit Breaker:</b> 3% daily loss limit (trading halts immediately if breached)\n"
             "• <b>Zero Leverage:</b> Cash CNC Delivery only (zero debt, zero liquidation risk)\n\n"
             "🎯 <b>STRATEGY & EXECUTION RULES:</b>\n"
-            "• <b>Risk per Trade:</b> 1.0% max (0.75% if India VIX > 15)\n"
-            "• <b>Weekly Confluence:</b> 20 EMA > 50 EMA on 1wk required\n"
-            "• <b>Anti-Chasing:</b> Max 2.2% distance from 20 EMA\n"
-            "• <b>VectorBT Filter:</b> Win Rate >= 52% | Profit Factor >= 1.50\n"
+            "• <b>Risk per Trade:</b> 1.0% max (0.75% if India VIX &gt; 15)\n"
+            "• <b>Weekly Confluence:</b> 20 EMA &gt; 50 EMA on 1wk required\n"
+            "• <b>Anti-Chasing:</b> Max 3.8% distance from 20 EMA\n"
+            "• <b>VectorBT Filter:</b> Win Rate &ge; 45% | Profit Factor &ge; 1.25\n"
             "• <b>1.0R Gain:</b> Stop Loss raised to Breakeven (0% risk)\n"
             "• <b>+3.5% Gain:</b> SL locked at +2.0% guaranteed profit floor\n"
             "• <b>2.0R Gain:</b> 50% partial exit taken, remainder trails 20 EMA"
@@ -365,6 +383,11 @@ class InteractiveTelegramBot:
         regime = self.regime_analyzer.analyze_regime()
         open_trades = self.logger.get_open_trades()
         summary = self.logger.calculate_daily_summary()
+        today_realized = float(summary.get("realized_pnl", 0.0))
+        total_realized = float(summary.get("total_realized_pnl", today_realized))
+        unrealized = float(summary.get("unrealized_pnl", 0.0))
+        total_net = round(total_realized + unrealized, 2)
+        equity = round(100000.0 + total_net, 2)
 
         msg = (
             "🛡️ <b>AMPOLIN SYSTEM HEALTH WATCHDOG (10/10)</b>\n\n"
@@ -379,7 +402,7 @@ class InteractiveTelegramBot:
             f"• <b>Options PCR Sentiment:</b> 🟢 {regime.pcr_ratio} ({regime.pcr_sentiment})\n"
             "• <b>Database State Engine:</b> 🟢 Auto-Persistent (JSON Snapshot Synced)\n"
             f"• <b>Active Positions Monitored:</b> 🟢 {len(open_trades)} stocks\n"
-            f"• <b>Account Equity:</b> 🟢 ₹{100000.0 + summary.get('total_pnl', 0.0):,.2f}\n"
+            f"• <b>Account Equity:</b> 🟢 ₹{equity:,.2f}\n"
             "• <b>Daemon Status:</b> 🟢 24/7 Dual-Market Autonomous Polling Active"
         )
         await update.message.reply_text(msg, parse_mode="HTML")
@@ -415,7 +438,8 @@ class InteractiveTelegramBot:
         # Check for direct conversational trade actions (Sell, Close, Lock Profit, Breakeven)
         try:
             from trade_actions import process_natural_chat_trade_command
-            action_reply = process_natural_chat_trade_command(user_text, trade_logger=self.logger, broker=self.broker, notifier=self.notifier)
+            # Pass notifier=None to avoid duplicate alert broadcast to the same user
+            action_reply = process_natural_chat_trade_command(user_text, trade_logger=self.logger, broker=self.broker, notifier=None)
             if action_reply:
                 await update.message.reply_text(action_reply, parse_mode="HTML")
                 return
@@ -431,9 +455,19 @@ class InteractiveTelegramBot:
             summary = self.logger.calculate_daily_summary()
 
             starting_capital = 100000.0
-            deployed_margin = sum(float(t.get("capital_allocated") or 0.0) for t in open_trades)
-            available_cash = round(starting_capital - deployed_margin + summary.get("realized_pnl", 0.0), 2)
-            portfolio_equity = round(starting_capital + summary.get("total_pnl", 0.0), 2)
+            from market_hours import get_usd_inr_rate
+            usd_rate = get_usd_inr_rate()
+            deployed_margin = 0.0
+            for t in open_trades:
+                cap = float(t.get("capital_allocated") or 0.0)
+                is_usd = not t["ticker"].endswith(".NS") and not t["ticker"].endswith(".BO")
+                deployed_margin += (cap * usd_rate) if is_usd else cap
+
+            today_realized = float(summary.get("realized_pnl", 0.0))
+            total_realized = float(summary.get("total_realized_pnl", today_realized))
+            unrealized = float(summary.get("unrealized_pnl", 0.0))
+            available_cash = round(starting_capital - deployed_margin + total_realized, 2)
+            portfolio_equity = round(starting_capital + total_realized + unrealized, 2)
 
             # Safely fetch or initialize chat history for this chat_id
             if chat_id not in self.chat_memories:

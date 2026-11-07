@@ -198,7 +198,14 @@ def get_system_status():
     regime = regime_analyzer.analyze_regime()
 
     starting_capital = 100000.0
-    deployed_margin = sum(float(t.get("capital_allocated") or 0.0) for t in open_trades)
+    from market_hours import get_usd_inr_rate
+    usd_rate = get_usd_inr_rate()
+    deployed_margin = 0.0
+    for t in open_trades:
+        cap = float(t.get("capital_allocated") or 0.0)
+        is_usd = not t["ticker"].endswith(".NS") and not t["ticker"].endswith(".BO")
+        deployed_margin += (cap * usd_rate) if is_usd else cap
+
     realized_pnl = summary.get("realized_pnl", 0.0)
     total_realized_pnl = summary.get("total_realized_pnl", realized_pnl)
     unrealized_pnl = summary.get("unrealized_pnl", 0.0)
@@ -232,6 +239,12 @@ def get_system_health():
     open_trades = trade_logger.get_open_trades()
     summary = trade_logger.calculate_daily_summary()
     regime = regime_analyzer.analyze_regime()
+    today_realized = float(summary.get("realized_pnl", 0.0))
+    total_realized = float(summary.get("total_realized_pnl", today_realized))
+    unrealized = float(summary.get("unrealized_pnl", 0.0))
+    total_pnl = round(total_realized + unrealized, 2)
+    account_equity = round(100000.0 + total_pnl, 2)
+
     return {
         "status": "HEALTHY",
         "score": "10/10 (Institutional Grade)",
@@ -240,9 +253,10 @@ def get_system_health():
         "ai_fallback": "qwen/qwen3.8-27b (Groq LPUs Sub-100ms)",
         "broker_gateway": "DhanHQ Paper Sandbox (Zero Leverage CNC)",
         "open_positions_count": len(open_trades),
-        "account_equity": round(100000.0 + summary.get("total_pnl", 0.0), 2),
-        "floating_pnl": summary.get("unrealized_pnl", 0.0),
-        "realized_pnl": summary.get("realized_pnl", 0.0),
+        "account_equity": account_equity,
+        "floating_pnl": unrealized,
+        "realized_pnl": today_realized,
+        "total_realized_pnl": total_realized,
         "vix_volatility": f"{regime.india_vix:.2f} ({regime.vix_regime})",
         "options_pcr": f"{regime.pcr_ratio} ({regime.pcr_sentiment})",
         "state_snapshot_persistence": "ACTIVE (Auto-Synced JSON Snapshot)",
@@ -276,16 +290,9 @@ def manual_breakeven(req: TradeActionRequest):
     if not target:
         return JSONResponse({"status": "ERROR", "message": f"Active trade {req.order_id} not found."}, status_code=404)
 
-    entry = float(target["entry_price"])
-    ticker = target["ticker"]
-    trade_logger.update_trade_stop_loss(req.order_id, entry, "STAGE_BREAKEVEN")
-    notifier.send_message(
-        f"🎯 <b>MANUAL BREAKEVEN ACTIVATED - {ticker}</b>\n\n"
-        f"• Entry: ₹{entry:,.2f}\n"
-        f"• New Protective SL: ₹{entry:,.2f}\n"
-        f"• <b>Status:</b> Exactly 0.00% capital risk. Trade is fully protected!"
-    )
-    return {"status": "SUCCESS", "message": f"Stop loss for {ticker} moved to breakeven (₹{entry:,.2f})."}
+    from trade_actions import execute_breakeven
+    execute_breakeven(target, trade_logger=trade_logger, broker=broker, notifier=notifier)
+    return {"status": "SUCCESS", "message": f"Stop loss for {target['ticker']} moved to breakeven (0% risk)."}
 
 
 @app.post("/api/trades/lock-profit")
@@ -295,17 +302,11 @@ def manual_lock_profit(req: TradeActionRequest):
     if not target:
         return JSONResponse({"status": "ERROR", "message": f"Active trade {req.order_id} not found."}, status_code=404)
 
+    from trade_actions import execute_lock_profit
+    execute_lock_profit(target, trade_logger=trade_logger, broker=broker, notifier=notifier)
     entry = float(target["entry_price"])
-    ticker = target["ticker"]
     locked_sl = round(entry * 1.02, 2)
-    trade_logger.update_trade_stop_loss(req.order_id, locked_sl, "STAGE_PROFIT_LOCKED")
-    notifier.send_message(
-        f"🔒 <b>MANUAL PROFIT LOCK ACTIVATED - {ticker}</b>\n\n"
-        f"• Entry: ₹{entry:,.2f}\n"
-        f"• Protective SL: ₹{locked_sl:,.2f} (+2.0% profit floor)\n"
-        f"• <b>Status:</b> Guaranteed minimum +2.0% profit locked!"
-    )
-    return {"status": "SUCCESS", "message": f"Stop loss for {ticker} locked at +2.0% (₹{locked_sl:,.2f})."}
+    return {"status": "SUCCESS", "message": f"Stop loss for {target['ticker']} locked at +2.0% floor ({locked_sl:,.2f})."}
 
 
 @app.post("/api/trades/close")
@@ -315,15 +316,10 @@ def manual_close_trade(req: TradeActionRequest):
     if not target:
         return JSONResponse({"status": "ERROR", "message": f"Active trade {req.order_id} not found."}, status_code=404)
 
-    ticker = target["ticker"]
+    from trade_actions import execute_close_trade
+    execute_close_trade(target, trade_logger=trade_logger, broker=broker, notifier=notifier)
     exit_price = float(target.get("current_price") or target["entry_price"])
-    trade_logger.close_trade(req.order_id, exit_price=exit_price)
-    notifier.send_message(
-        f"💰 <b>MANUAL SQUARE-OFF EXECUTED - {ticker}</b>\n\n"
-        f"• Exit Price: ₹{exit_price:,.2f}\n"
-        f"• <b>Status:</b> Trade closed and realized P&L recorded."
-    )
-    return {"status": "SUCCESS", "message": f"Position in {ticker} closed at ₹{exit_price:,.2f}."}
+    return {"status": "SUCCESS", "message": f"Position in {target['ticker']} squared off at {exit_price:,.2f}."}
 
 
 @app.get("/api/rules")
@@ -479,12 +475,12 @@ def dashboard_html():
     return DASHBOARD_HTML_PAGE
 
 
-DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
+DASHBOARD_HTML_PAGE = r"""<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Ampolin AI Trading Agent | Terminal</title>
+  <title>Ampolin AI | Institutional Quant Terminal</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
@@ -500,46 +496,108 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
   <meta name="apple-mobile-web-app-title" content="Ampolin AI">
   <meta name="theme-color" content="#09090b">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
-    body { background-color: #000000; font-family: -apple-system, BlinkMacSystemFont, "Geist", "Inter", "Segoe UI", Roboto, sans-serif; }
+    html, body {
+      background-color: #09090b;
+      font-family: -apple-system, BlinkMacSystemFont, "Geist", "Inter", "Segoe UI", Roboto, sans-serif;
+      letter-spacing: -0.01em;
+      max-width: 100vw;
+      overflow-x: hidden;
+      scroll-behavior: smooth;
+    }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
     ::-webkit-scrollbar { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-track { background: #000000; }
+    ::-webkit-scrollbar-track { background: #09090b; }
     ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
     ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
-    .border-subtle { border-color: #27272a; }
+    .fintech-card {
+      background-color: #121215;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .fintech-card:hover {
+      border-color: rgba(255, 255, 255, 0.13);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    }
+    .fintech-card-subtle {
+      background-color: #16161a;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .chart-tab.active { background-color: #ffffff; color: #000000; font-weight: 600; box-shadow: 0 0 12px rgba(255, 255, 255, 0.2); }
+    .mobile-tab-btn {
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .mobile-tab-btn.active {
+      color: #ffffff;
+      background-color: #27272a;
+      transform: translateY(-2px);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.12);
+    }
+    .touch-scroll {
+      -webkit-overflow-scrolling: touch;
+    }
+    /* Smooth number transitions */
+    .metric-animate {
+      transition: color 0.4s ease;
+    }
+    /* Fade-in for dynamically loaded content */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in-up {
+      animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    /* Pulse glow for live data */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.15); }
+      50% { box-shadow: 0 0 12px 2px rgba(52, 211, 153, 0.08); }
+    }
+    .live-glow { animation: pulseGlow 3s ease-in-out infinite; }
+    /* Smooth button press */
+    .btn-press { transition: transform 0.12s ease, box-shadow 0.12s ease; }
+    .btn-press:active { transform: scale(0.96); }
+    /* Chat message slide-in */
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .chat-msg { animation: slideIn 0.25s ease-out both; }
   </style>
 </head>
-<body class="bg-black text-zinc-300 min-h-screen flex flex-col antialiased selection:bg-white selection:text-black">
+<body class="bg-[#09090b] text-zinc-300 min-h-screen flex flex-col antialiased selection:bg-white selection:text-black pb-24 md:pb-0 overflow-x-hidden">
 
-  <!-- Top Minimalist Header -->
-  <header class="bg-black/95 backdrop-blur border-b border-zinc-850 px-4 sm:px-6 py-3.5 flex justify-between items-center sticky top-0 z-50">
+  <!-- Top Minimalist Institutional Header -->
+  <header class="bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/80 px-4 sm:px-6 py-3 flex justify-between items-center sticky top-0 z-50">
     <div class="flex items-center space-x-3">
       <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-8 h-8 rounded-lg border border-zinc-800 object-cover shrink-0 shadow-sm">
       <div>
         <div class="flex items-center gap-2">
           <span class="text-sm sm:text-base font-bold tracking-tight text-white mono">AMPOLIN</span>
-          <span class="text-zinc-400 font-normal text-[10px] px-1.5 py-0.5 rounded border border-zinc-800 bg-zinc-900 mono">QUANT</span>
+          <span class="text-[10px] text-zinc-400 font-medium px-1.5 py-0.5 rounded border border-zinc-800 bg-zinc-900 mono">FINTECH PRO</span>
         </div>
-        <p class="text-[10px] sm:text-[11px] text-zinc-500 tracking-tight">Autonomous Dual-Market Terminal &bull; NSE &amp; Wall Street</p>
+        <p class="text-[10px] sm:text-[11px] text-zinc-500">Autonomous Dual-Market Execution &bull; NSE &amp; Wall Street</p>
       </div>
     </div>
 
     <!-- Unified Segmented Status Capsule -->
-    <div class="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] mono divide-x divide-zinc-800 shadow-inner">
+    <div class="flex items-center bg-[#121215] border border-zinc-800 rounded-lg px-2.5 sm:px-3 py-1.5 text-[11px] mono divide-x divide-zinc-800 shadow-sm">
       <div class="flex items-center gap-1.5 pr-2.5 sm:pr-3">
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
         <span class="text-white font-semibold" id="badge-engine">ACTIVE</span>
       </div>
       <div class="px-2.5 sm:px-3 text-zinc-400 hidden sm:block">
-        <span id="badge-brain">Gemini &bull; Groq</span>
+        <span id="badge-brain">Gemini 3.5 &bull; Groq</span>
       </div>
       <div class="px-2.5 sm:px-3 text-zinc-400 hidden md:block">
         <span id="badge-pcr">PCR: 1.08 &bull; Accumulation</span>
       </div>
-      <div class="px-2.5 sm:px-3 text-zinc-400 hidden lg:block">
-        <span>Risk: 1.0% Max</span>
+      <div class="px-2.5 sm:px-3 text-emerald-400 hidden lg:block font-medium">
+        <span>20% Anti-Dump Guard</span>
       </div>
       <div class="pl-2.5 sm:pl-3 text-zinc-300 font-medium">
         <span id="live-time">--:--:-- IST</span>
@@ -547,111 +605,249 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
     </div>
   </header>
 
-  <!-- Metric Overview Bar (Minimalist Cards) -->
-  <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-5 sm:pt-6 grid grid-cols-2 md:grid-cols-6 gap-2.5 sm:gap-3.5">
-    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
+  <!-- Metric Overview Bar (Minimalist Swiss Cards) -->
+  <div id="section-dashboard" class="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-5 grid grid-cols-2 md:grid-cols-6 gap-2.5 sm:gap-3.5">
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl live-glow">
       <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
         <span>Portfolio Equity</span>
-        <i class="fa-solid fa-wallet text-zinc-600"></i>
+        <i class="fa-solid fa-wallet text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-equity">₹100,000.00</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-funds-breakdown">Cash: ₹100,000 | Invested: ₹0</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums metric-animate" id="metric-equity">₹--</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-funds-breakdown">Syncing live funds...</div>
     </div>
 
-    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
       <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
-        <span>Total P&amp;L (Floating)</span>
-        <i class="fa-solid fa-chart-line text-zinc-600"></i>
+        <span>Unrealized P&amp;L</span>
+        <i class="fa-solid fa-chart-line text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-pnl">₹0.00</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-pnl-breakdown">Floating: ₹0.00 | Realized: ₹0.00</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums metric-animate" id="metric-pnl">--</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-pnl-breakdown">Calculating live P&amp;L...</div>
     </div>
 
-    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
       <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
         <span>Market Breadth</span>
-        <i class="fa-solid fa-bars-progress text-zinc-600"></i>
+        <i class="fa-solid fa-bars-progress text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-breadth">--%</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-600 mt-1" id="metric-breadth-regime">Nifty 50 &gt; 50 EMA</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-breadth">--%</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-breadth-regime">Checking market regime...</div>
     </div>
 
-    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
       <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
         <span>India VIX</span>
-        <i class="fa-solid fa-bolt text-zinc-600"></i>
+        <i class="fa-solid fa-bolt text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-vix">--</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-600 mt-1" id="metric-dynamic-risk">Risk: --%</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-vix">--</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-dynamic-risk">Dynamic Risk: --</div>
     </div>
 
-    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80">
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
       <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
-        <span>Win Rate</span>
-        <i class="fa-solid fa-bullseye text-zinc-600"></i>
+        <span>Win Rate (Filtered)</span>
+        <i class="fa-solid fa-bullseye text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-winrate">0.0%</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-600 mt-1">VectorBT Filtered (&ge;52%)</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums metric-animate" id="metric-winrate">--%</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-winrate-sub">Real-Time Win Rate</div>
     </div>
 
-    <div class="bg-zinc-950 p-3.5 sm:p-4 rounded-xl border border-zinc-800/80 col-span-2 md:col-span-1">
+    <div class="fintech-card p-3.5 sm:p-4 rounded-xl col-span-2 md:col-span-1">
       <div class="flex justify-between items-center text-zinc-500 text-[10px] sm:text-[11px] font-medium tracking-wider uppercase mb-1">
-        <span>Active Positions</span>
-        <i class="fa-solid fa-layer-group text-zinc-600"></i>
+        <span>Active Holdings</span>
+        <i class="fa-solid fa-layer-group text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-xl sm:text-2xl font-bold text-white mono" id="metric-open-trades">0</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-600 mt-1">1R Breakeven &bull; 3.5% Lock</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-open-trades">0</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-open-trades-sub">1R Breakeven &bull; 3.5% Lock</div>
     </div>
   </div>
 
-  <!-- Primary Action & Control Toolbar (Mobile Thumb-Friendly Grid) -->
+  <!-- Primary Action & Control Toolbar -->
   <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 py-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
     <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-      <button onclick="runPipeline()" id="btn-pipeline" class="bg-white hover:bg-zinc-200 text-black font-semibold px-3.5 py-2.5 sm:py-2 rounded-lg text-xs tracking-wide flex items-center justify-center gap-2 transition active:scale-95 shadow-sm">
+      <button onclick="runPipeline()" id="btn-pipeline" class="btn-press bg-white hover:bg-zinc-200 text-black font-semibold px-3.5 py-2 rounded-lg text-xs tracking-wide flex items-center justify-center gap-2 transition active:scale-95 shadow-sm cursor-pointer">
         <i class="fa-solid fa-play text-[10px]"></i> Run Pipeline
       </button>
 
-      <button onclick="runScan()" id="btn-scan" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2.5 sm:py-2 rounded-lg border border-zinc-800 flex items-center justify-center gap-2 transition text-xs">
+      <button onclick="runScan()" id="btn-scan" class="btn-press fintech-card hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
         <i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan NSE
       </button>
 
-      <button onclick="managePositions()" id="btn-manage" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2.5 sm:py-2 rounded-lg border border-zinc-800 flex items-center justify-center gap-2 transition text-xs">
-        <i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Profit Lock
+      <button onclick="managePositions()" id="btn-manage" class="btn-press fintech-card hover:bg-zinc-800 text-zinc-200 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
+        <i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Sweep &amp; Lock Profits
       </button>
 
-      <button onclick="runEOD()" id="btn-eod" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-medium px-3 py-2.5 sm:py-2 rounded-lg border border-zinc-800 flex items-center justify-center gap-2 transition text-xs">
+      <button onclick="runEOD()" id="btn-eod" class="btn-press fintech-card hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition text-xs cursor-pointer">
         <i class="fa-solid fa-microscope text-[10px]"></i> EOD Reflection
       </button>
 
-      <a href="/api/backup/export" download="portfolio_state_snapshot.json" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-medium px-3 py-2.5 sm:py-2 rounded-lg border border-zinc-800 flex items-center justify-center gap-1.5 transition text-xs">
+      <a href="/api/backup/export" download="portfolio_state_snapshot.json" class="btn-press fintech-card hover:bg-zinc-800 text-zinc-300 font-medium px-3.5 py-2 rounded-lg flex items-center justify-center gap-1.5 transition text-xs cursor-pointer">
         <i class="fa-solid fa-cloud-arrow-down text-[10px] text-zinc-400"></i> Export State
       </a>
     </div>
 
     <div class="flex items-center justify-between sm:justify-end gap-2 text-xs">
-      <div class="flex items-center bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 gap-2 flex-1 sm:flex-initial">
-        <span class="text-zinc-500 text-[11px]">Timeframe:</span>
-        <select id="select-tf" class="bg-transparent border-0 text-white mono text-xs focus:outline-none cursor-pointer">
-          <option value="1d" selected class="bg-zinc-900">1D (Daily)</option>
-          <option value="4h" class="bg-zinc-900">4H (Swing)</option>
+      <div class="flex items-center fintech-card px-3 py-1.5 rounded-lg gap-2 flex-1 sm:flex-initial">
+        <span class="text-zinc-500 text-[11px]">Market:</span>
+        <select id="select-market" onchange="updateMarketLabel()" class="bg-transparent border-0 text-white mono text-xs focus:outline-none cursor-pointer">
+          <option value="NSE" selected class="bg-zinc-900">🇮🇳 NSE</option>
+          <option value="US" class="bg-zinc-900">🇺🇸 Wall St</option>
         </select>
       </div>
 
-      <div class="flex items-center bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 gap-2 flex-1 sm:flex-initial justify-center">
+      <div class="flex items-center fintech-card px-3 py-1.5 rounded-lg gap-2 flex-1 sm:flex-initial">
+        <span class="text-zinc-500 text-[11px]">Timeframe:</span>
+        <select id="select-tf" class="bg-transparent border-0 text-white mono text-xs focus:outline-none cursor-pointer">
+          <option value="1d" selected class="bg-zinc-900">1D (Daily Swing)</option>
+          <option value="4h" class="bg-zinc-900">4H (Tactical)</option>
+        </select>
+      </div>
+
+      <div class="flex items-center fintech-card px-3 py-1.5 rounded-lg gap-2 flex-1 sm:flex-initial justify-center">
         <span class="text-zinc-500 text-[11px]">Mode:</span>
-        <span class="text-zinc-300 border border-zinc-700/80 bg-zinc-900/80 px-2 py-0.5 rounded text-[11px] mono font-medium">Paper</span>
+        <span class="text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 rounded text-[11px] mono font-medium">Paper Sandbox</span>
       </div>
     </div>
   </div>
 
-  <!-- Main Content Layout Grid -->
-  <main class="max-w-7xl mx-auto w-full px-6 pb-12 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-5">
+  <!-- Interactive Candlestick Chart Module (Dual-Engine: TradingView Advanced & Lightweight Pro) -->
+  <section id="section-charts" class="max-w-7xl mx-auto w-full px-4 sm:px-6 mb-5">
+    <div class="fintech-card rounded-xl p-4 sm:p-5">
+      <!-- Header Row: Title, Engine Switcher, Search Input, Direct TV Link -->
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3.5">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-white tracking-tight flex items-center gap-2">
+              <i class="fa-solid fa-chart-candlestick text-emerald-400"></i> Interactive Stock Charts
+            </h2>
+            <!-- Engine Toggle Pills -->
+            <div class="inline-flex rounded-lg border border-zinc-800 bg-zinc-900/90 p-0.5 text-xs mono">
+              <button id="engine-btn-lw" onclick="switchChartEngine('lw')" class="px-2.5 py-1 rounded-md bg-white text-black font-semibold transition flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-bolt text-[11px] text-emerald-600"></i> <span>Lightweight Pro</span>
+              </button>
+              <button id="engine-btn-tv" onclick="switchChartEngine('tv')" class="px-2.5 py-1 rounded-md text-zinc-400 hover:text-white transition flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-chart-line text-[11px]"></i> <span>TradingView Advanced</span>
+              </button>
+            </div>
+          </div>
+          <p class="text-[11px] text-zinc-500 mt-1">Institutional price action, custom indicator levels, and universal stock search</p>
+        </div>
 
-    <!-- Left 2 Columns: Live Candidates, VectorBT Verification & AI Decisions -->
+        <!-- Universal Stock Search & External TV Button -->
+        <div class="flex flex-wrap items-center gap-2">
+          <form onsubmit="handleCustomSymbolSearch(event)" class="flex items-center gap-1.5">
+            <div class="relative">
+              <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-zinc-500 text-[11px]"></i>
+              <input type="text" id="symbol-search-input" placeholder="Search (TSLA, NVDA, RELIANCE, TCS...)" autocomplete="off" class="w-44 sm:w-60 bg-zinc-900 border border-zinc-800 rounded-lg pl-7 pr-2 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 mono" />
+            </div>
+            <button type="submit" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 px-2.5 py-1.5 rounded-lg text-xs mono font-medium transition cursor-pointer">
+              Load
+            </button>
+          </form>
+
+          <a id="btn-open-tv" href="https://www.tradingview.com/chart/?symbol=NSE:DIVISLAB" target="_blank" rel="noopener noreferrer" title="Open full chart on TradingView.com" class="fintech-card hover:bg-zinc-800 text-zinc-400 hover:text-white px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 shrink-0 transition">
+            <span>TradingView.com</span>
+            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Quick Ticker Switcher Chips & Active Holdings Row -->
+      <div class="flex items-center gap-2 overflow-x-auto pb-2 mb-3 border-b border-zinc-850 touch-scroll" id="chart-tabs-container">
+        <!-- Dynamic Active Holdings (injected by loadTrades) -->
+        <div class="flex items-center gap-1.5 shrink-0" id="active-holdings-tabs">
+          <span class="text-[11px] text-zinc-500 mono py-1">Loading holdings...</span>
+        </div>
+
+        <div class="h-4 w-[1px] bg-zinc-800 shrink-0 mx-1"></div>
+
+        <!-- Benchmarks & Popular Watchlist Chips -->
+        <div class="flex items-center gap-1.5 shrink-0" id="market-browse-chips">
+          <button onclick="switchChartSymbol('^NSEI', 'NIFTY 50', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="^NSEI">
+            <span>📊 NIFTY</span>
+          </button>
+          <button onclick="switchChartSymbol('^INDIAVIX', 'INDIA VIX', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="^INDIAVIX">
+            <span>⚡ VIX</span>
+          </button>
+          <button onclick="switchChartSymbol('TSLA', 'TSLA', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="TSLA">
+            <span>TSLA</span>
+          </button>
+          <button onclick="switchChartSymbol('NVDA', 'NVDA', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="NVDA">
+            <span>NVDA</span>
+          </button>
+          <button onclick="switchChartSymbol('RELIANCE.NS', 'RELIANCE', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="RELIANCE.NS">
+            <span>RELIANCE</span>
+          </button>
+          <button onclick="switchChartSymbol('TCS.NS', 'TCS', null, null, null, null, null, this)" class="chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1 transition cursor-pointer shrink-0" data-ticker="TCS.NS">
+            <span>TCS</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Position / Browsing Status Bar -->
+      <div id="chart-position-bar" class="fintech-card-subtle rounded-lg p-2.5 mb-3 flex flex-wrap items-center justify-between gap-3 text-xs mono">
+        <!-- Active Holding Detail View -->
+        <div id="cp-pos-details" class="flex flex-wrap items-center gap-4 hidden">
+          <div><span class="text-zinc-500">Holding:</span> <span class="text-white font-bold" id="cp-ticker">--</span></div>
+          <div><span class="text-zinc-500">Entry:</span> <span class="text-zinc-300 font-semibold" id="cp-entry">--</span></div>
+          <div><span class="text-zinc-500">Live Price:</span> <span class="text-emerald-400 font-bold" id="cp-live">--</span></div>
+          <div><span class="text-zinc-500">Stop Loss:</span> <span class="text-amber-400 font-semibold" id="cp-sl">--</span></div>
+          <div><span class="text-zinc-500">Stage:</span> <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/20" id="cp-stage">ACTIVE</span></div>
+        </div>
+
+        <!-- Non-Holding Browsing View -->
+        <div id="cp-browse-details" class="flex items-center gap-2 text-zinc-400">
+          <i class="fa-solid fa-compass text-emerald-400"></i>
+          <span>Browsing Instrument: <b id="browse-symbol-title" class="text-white">DIVISLAB</b></span>
+          <span class="text-zinc-600">|</span>
+          <span class="text-zinc-500">Dual-market technicals • Use search above or click any stock</span>
+        </div>
+
+        <!-- 1-Click Action Controls (shown only for active holdings) -->
+        <div class="flex items-center gap-1.5 hidden" id="cp-actions">
+          <button id="btn-quick-be" onclick="triggerQuickAction('breakeven')" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2.5 py-1 rounded border border-zinc-700 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-bullseye text-[10px] text-zinc-400"></i> Breakeven
+          </button>
+          <button id="btn-quick-lock" onclick="triggerQuickAction('lock-profit')" class="bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 px-2.5 py-1 rounded border border-amber-800/60 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-lock text-[10px] text-amber-400"></i> Lock +2%
+          </button>
+          <button onclick="triggerQuickAction('close')" class="bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 px-2.5 py-1 rounded border border-rose-800/60 text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-xmark text-[10px]"></i> Close
+          </button>
+        </div>
+      </div>
+
+      <!-- TradingView Free Widget NSE Restriction Notice Banner -->
+      <div id="tv-nse-notice" class="hidden p-2.5 mb-2 bg-amber-950/40 border border-amber-800/40 rounded-lg text-amber-300 text-xs mono flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-circle-info text-amber-400"></i>
+          <span>TradingView limits free widget embeds for Indian NSE stocks. Use <b>Lightweight Pro</b> for full candles or view on TV.com.</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button onclick="switchChartEngine('lw')" class="bg-amber-400 hover:bg-amber-300 text-black px-2.5 py-0.5 rounded font-bold text-[11px] transition cursor-pointer">
+            ⚡ Switch to Lightweight Pro
+          </button>
+        </div>
+      </div>
+
+      <!-- Chart Display Containers (Dual-Engine) -->
+      <div id="chart-display-frame" class="h-[430px] w-full rounded-lg overflow-hidden border border-zinc-800/80 bg-black relative">
+        <!-- Lightweight Charts Engine Container -->
+        <div id="tradingview_embed_box" class="w-full h-[430px]" style="min-height: 430px;"></div>
+        <!-- TradingView Advanced Real-Time Widget Container -->
+        <div id="tradingview_widget_container" class="w-full h-[430px] hidden" style="min-height: 430px;"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content Layout Grid -->
+  <main class="max-w-7xl mx-auto w-full px-4 sm:px-6 pb-12 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+    <!-- Left 2 Columns: Live Candidates, VectorBT Verification & Executed Trades Table -->
     <div class="lg:col-span-2 space-y-5">
 
       <!-- Candidate Setups & Backtests Section -->
-      <section class="bg-zinc-950 rounded-xl border border-zinc-800/80 p-5">
+      <section class="fintech-card rounded-xl p-5">
         <div class="flex justify-between items-center mb-3.5">
           <div>
             <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
@@ -662,24 +858,24 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
           <span class="text-[11px] mono bg-zinc-900 px-2 py-0.5 rounded text-zinc-400 border border-zinc-800" id="scan-count">0 candidates</span>
         </div>
 
-        <div id="candidates-container" class="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+        <div id="candidates-container" class="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
           <div class="text-center py-12 text-zinc-600 text-xs">
             <i class="fa-solid fa-compass text-2xl mb-2 text-zinc-700 block"></i>
-            Click "Run Autonomous Pipeline" or "Scan Candidates" to analyze the universe.
+            Click "Run Autonomous Pipeline" or "Scan NSE" to evaluate fresh breakout candidates.
           </div>
         </div>
       </section>
 
-      <!-- Active SQLite Trades Log -->
-      <section class="bg-zinc-950 rounded-xl border border-zinc-800/80 p-5">
+      <!-- Active SQLite Trades Log with 1-Click Interactive Actions -->
+      <section class="fintech-card rounded-xl p-5">
         <div class="flex justify-between items-center mb-3.5">
           <div>
             <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
-              <i class="fa-solid fa-database text-zinc-400"></i> Executed Trades &bull; SQLite Audit
+              <i class="fa-solid fa-database text-zinc-400"></i> Executed Trades &bull; Live Portfolio Ledger
             </h2>
-            <p class="text-[11px] text-zinc-500 mt-0.5">Real-time database tracking of paper &amp; live swing positions</p>
+            <p class="text-[11px] text-zinc-500 mt-0.5">Click any stock to inspect its chart, or use the 1-click action buttons</p>
           </div>
-          <button onclick="loadTrades()" class="text-xs text-zinc-400 hover:text-white flex items-center gap-1 transition">
+          <button onclick="loadTrades()" class="text-xs text-zinc-400 hover:text-white flex items-center gap-1 transition cursor-pointer">
             <i class="fa-solid fa-arrows-rotate text-[10px]"></i> Refresh
           </button>
         </div>
@@ -695,14 +891,14 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
                 <th class="py-2 px-3">Live Price</th>
                 <th class="py-2 px-3">Invested</th>
                 <th class="py-2 px-3">Stop Loss</th>
-                <th class="py-2 px-3">Target</th>
                 <th class="py-2 px-3">Unrealized P&amp;L</th>
                 <th class="py-2 px-3">Stage / Status</th>
+                <th class="py-2 px-3 text-center">Controls</th>
               </tr>
             </thead>
             <tbody id="trades-tbody" class="divide-y divide-zinc-850">
               <tr>
-                <td colspan="10" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td>
+                <td colspan="10" class="text-center py-8 text-zinc-600">Loading live database ledger...</td>
               </tr>
             </tbody>
           </table>
@@ -711,11 +907,11 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
 
     </div>
 
-    <!-- Right 1 Column: Gemini AI Brain Decision & Active Rules -->
-    <div class="space-y-5">
+    <!-- Right 1 Column: Gemini AI Brain Decision & Capital Protection Rules -->
+    <div id="section-rules" class="space-y-5">
 
       <!-- Gemini AI Brain Highlight Card -->
-      <section class="bg-zinc-950 rounded-xl border border-zinc-800/80 p-5">
+      <section class="fintech-card rounded-xl p-5">
         <div class="flex items-center justify-between mb-2">
           <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
             <i class="fa-solid fa-brain text-zinc-400"></i> Gemini AI Decision
@@ -732,24 +928,40 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         </div>
       </section>
 
-      <!-- Active Rules & Self-Refining Parameters -->
-      <section class="bg-zinc-950 rounded-xl border border-zinc-800/80 p-5">
+      <!-- Active Rules & Capital Protection Circuit Breakers Card -->
+      <section class="fintech-card rounded-xl p-5">
         <div class="flex items-center justify-between mb-2">
           <h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
-            <i class="fa-solid fa-sliders text-zinc-400"></i> Active Parameters
+            <i class="fa-solid fa-shield-halved text-emerald-400"></i> Capital Protection &amp; Parameters
           </h2>
           <span class="text-[10px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2 py-0.5 rounded mono">active_rules.json</span>
         </div>
-        <p class="text-[11px] text-zinc-500 mb-3">Self-tuned by daily 15:45 IST post-mortem reflections.</p>
+        <p class="text-[11px] text-zinc-500 mb-3">Institutional risk rules &amp; anti-dump circuit breakers.</p>
 
         <div id="rules-container" class="space-y-1.5 text-xs">
           <div class="flex justify-between py-1 border-b border-zinc-850">
-            <span class="text-zinc-500">Trend Filter:</span>
-            <span class="mono text-zinc-200">20 EMA &bull; 50 EMA</span>
+            <span class="text-zinc-500">Max Per-Stock Cap:</span>
+            <span class="mono text-emerald-400 font-semibold">20.0% (Anti-Dump Guard)</span>
           </div>
           <div class="flex justify-between py-1 border-b border-zinc-850">
-            <span class="text-zinc-500">RSI Momentum Zone:</span>
-            <span class="mono text-zinc-200">48.0 &ndash; 68.0</span>
+            <span class="text-zinc-500">Cash Reserve Floor:</span>
+            <span class="mono text-zinc-200">15.0% Untouchable Buffer</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Max Open Positions:</span>
+            <span class="mono text-zinc-200">4 Concurrent Assets</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Daily Loss Circuit Breaker:</span>
+            <span class="mono text-rose-400 font-semibold">-3.0% Auto-Halt Kill Switch</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Profit Ratchet:</span>
+            <span class="mono text-white">+3.5% (locks +2.0% floor)</span>
+          </div>
+          <div class="flex justify-between py-1 border-b border-zinc-850">
+            <span class="text-zinc-500">Breakeven Threshold:</span>
+            <span class="mono text-zinc-200">1.0R Gain (0% Risk)</span>
           </div>
           <div class="flex justify-between py-1 border-b border-zinc-850">
             <span class="text-zinc-500">Min VectorBT Win Rate:</span>
@@ -760,76 +972,132 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
             <span class="mono text-white font-medium">&ge; 1.50</span>
           </div>
           <div class="flex justify-between py-1 border-b border-zinc-850">
-            <span class="text-zinc-500">Anti-Chasing Ceiling:</span>
-            <span class="mono text-zinc-200">&le; 2.2% of 20 EMA</span>
-          </div>
-          <div class="flex justify-between py-1 border-b border-zinc-850">
-            <span class="text-zinc-500">Profit Ratchet:</span>
-            <span class="mono text-white">+3.5% (locks +2.0%)</span>
-          </div>
-          <div class="flex justify-between py-1 border-b border-zinc-850">
             <span class="text-zinc-500">Execution Segment:</span>
             <span class="mono text-zinc-300">CNC Delivery (Zero Leverage)</span>
-          </div>
-          <div class="flex justify-between py-1 border-b border-zinc-850">
-            <span class="text-zinc-500">Max Per-Stock Cap:</span>
-            <span class="mono text-emerald-400 font-semibold">20.0% (Anti-Dump Guard)</span>
-          </div>
-          <div class="flex justify-between py-1 border-b border-zinc-850">
-            <span class="text-zinc-500">Max Open Positions:</span>
-            <span class="mono text-zinc-200">4 Concurrent</span>
-          </div>
-          <div class="flex justify-between py-1 border-b border-zinc-850">
-            <span class="text-zinc-500">Cash Reserve Floor:</span>
-            <span class="mono text-zinc-200">15.0% Untouchable Cushion</span>
-          </div>
-          <div class="flex justify-between py-1 border-b border-zinc-850">
-            <span class="text-zinc-500">Daily Loss Circuit Breaker:</span>
-            <span class="mono text-red-400 font-semibold">-3.0% Auto-Halt Kill Switch</span>
           </div>
         </div>
 
         <div class="mt-4 pt-3 border-t border-zinc-850">
           <h3 class="text-xs font-medium text-zinc-400 mb-1 flex items-center gap-1.5">
-            <i class="fa-regular fa-lightbulb text-zinc-400"></i> Experiential Learnings:
+            <i class="fa-regular fa-lightbulb text-zinc-400"></i> Learned Insights:
           </h3>
           <ul id="insights-list" class="text-[11px] text-zinc-500 space-y-1 list-disc list-inside">
-            <li>Baseline active. Multi-timeframe weekly alignment active.</li>
+            <li>Anti-Dump Guard: 20% max allocation per stock strictly enforced.</li>
           </ul>
         </div>
       </section>
 
-      <!-- Telegram & Broker Health Card -->
-      <section class="bg-zinc-950 rounded-xl border border-zinc-800/80 p-5 text-xs space-y-2">
+      <!-- Connected Services Health -->
+      <section class="fintech-card rounded-xl p-5 text-xs space-y-2">
         <h2 class="text-sm font-semibold text-white mb-2 flex items-center gap-2">
           <i class="fa-solid fa-link text-zinc-400"></i> Connected Services
         </h2>
         <div class="flex justify-between py-1 border-b border-zinc-850">
-          <span class="text-zinc-500">Broker:</span>
-          <span class="font-medium text-white mono">DhanHQ API (Client: 1109569577)</span>
+          <span class="text-zinc-500">Execution Broker:</span>
+          <span class="font-medium text-white mono">DhanHQ API (1109569577)</span>
         </div>
         <div class="flex justify-between py-1 border-b border-zinc-850">
           <span class="text-zinc-500">AI Intelligence:</span>
-          <span class="font-medium text-zinc-200 mono">Google Gemini 3.5</span>
+          <span class="font-medium text-zinc-200 mono">Gemini 3.5 &bull; Groq LPU</span>
         </div>
         <div class="flex justify-between py-1 border-b border-zinc-850">
-          <span class="text-zinc-500">Alerts &amp; 2-Way Chat:</span>
+          <span class="text-zinc-500">Telegram Bot:</span>
           <span class="font-medium text-white mono">@AmpolinTradingBot</span>
         </div>
         <div class="flex justify-between py-1">
-          <span class="text-zinc-500">Cloud Infrastructure:</span>
-          <span class="font-medium text-zinc-300 mono">Google Cloud Run (asia-south1)</span>
+          <span class="text-zinc-500">Cloud Runtime:</span>
+          <span class="font-medium text-zinc-300 mono">Cloud Run (asia-south1)</span>
         </div>
       </section>
 
     </div>
   </main>
 
-  <footer class="bg-black border-t border-zinc-850 py-4 text-center text-xs text-zinc-600 mono">
-    AMPOLIN AI TRADING AGENT &bull; MINIMALIST HIGH-PRECISION SYSTEM &bull; 24/7 DUAL-MARKET
+  <!-- Mobile Bottom Navigation Bar (Animated, Touch-Optimized PWA) -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#09090b]/95 backdrop-blur-xl border-t border-zinc-800/80 px-2 py-1.5 flex justify-around items-center text-[10px] mono shadow-2xl safe-area-pb">
+    <button onclick="switchMobileTab('dashboard')" id="nav-btn-dashboard" class="mobile-tab-btn active flex flex-col items-center justify-center px-3.5 py-1.5 rounded-xl gap-1 text-white cursor-pointer">
+      <i class="fa-solid fa-table-columns text-sm"></i>
+      <span class="tracking-tight">Overview</span>
+    </button>
+    <button onclick="switchMobileTab('charts')" id="nav-btn-charts" class="mobile-tab-btn flex flex-col items-center justify-center px-3.5 py-1.5 rounded-xl gap-1 text-zinc-400 hover:text-zinc-200 cursor-pointer">
+      <i class="fa-solid fa-chart-candlestick text-sm"></i>
+      <span class="tracking-tight">Charts</span>
+    </button>
+    <button onclick="switchMobileTab('chat')" id="nav-btn-chat" class="mobile-tab-btn flex flex-col items-center justify-center px-3.5 py-1.5 rounded-xl gap-1 text-zinc-400 hover:text-zinc-200 cursor-pointer">
+      <i class="fa-solid fa-brain text-sm"></i>
+      <span class="tracking-tight">AI Quant</span>
+    </button>
+    <button onclick="switchMobileTab('rules')" id="nav-btn-rules" class="mobile-tab-btn flex flex-col items-center justify-center px-3.5 py-1.5 rounded-xl gap-1 text-zinc-400 hover:text-zinc-200 cursor-pointer">
+      <i class="fa-solid fa-shield-halved text-sm"></i>
+      <span class="tracking-tight">Rules</span>
+    </button>
+  </nav>
+
+  <!-- Floating In-App AI Chat Trigger (Desktop) -->
+  <button onclick="toggleChatDrawer()" id="btn-open-chat" class="hidden md:flex fixed bottom-6 right-6 z-40 bg-white hover:bg-zinc-200 text-black font-semibold px-4 py-2.5 rounded-full shadow-2xl items-center gap-2 text-xs transition active:scale-95 border border-zinc-200 cursor-pointer">
+    <i class="fa-solid fa-sparkles text-black"></i>
+    <span>Chat with AI</span>
+  </button>
+
+  <!-- In-App AI Chat Drawer (Mobile Bottom Sheet + Desktop Floating Window) -->
+  <div id="chat-drawer" class="fixed inset-x-0 bottom-0 sm:inset-auto sm:bottom-6 sm:right-6 z-50 w-full sm:w-[420px] h-[85vh] sm:h-[560px] bg-[#09090b] border-t sm:border border-zinc-800 sm:rounded-2xl shadow-2xl flex flex-col hidden transition-all">
+    <!-- Chat Header -->
+    <div class="px-4 py-3 bg-[#121215] border-b border-zinc-800 flex justify-between items-center sm:rounded-t-2xl">
+      <div class="flex items-center gap-2.5">
+        <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-6 h-6 rounded border border-zinc-800 object-cover">
+        <div>
+          <div class="text-xs font-bold text-white mono flex items-center gap-1.5">
+            AMPOLIN AI QUANT <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          </div>
+          <p class="text-[10px] text-zinc-500">Autonomous Trading Partner &bull; Gemini 3.5 &amp; Groq</p>
+        </div>
+      </div>
+      <button onclick="toggleChatDrawer()" class="text-zinc-400 hover:text-white text-base p-1.5 rounded-lg hover:bg-zinc-900 transition cursor-pointer">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Quick Prompt Chips -->
+    <div class="px-3 py-2 bg-[#121215]/80 border-b border-zinc-850 flex gap-1.5 overflow-x-auto text-[11px] mono">
+      <button onclick="sendQuickPrompt('How is our capital protected against dumps?')" class="bg-zinc-900 hover:bg-zinc-800 text-emerald-400 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">🛡️ Capital Guard</button>
+      <button onclick="sendQuickPrompt('What are our active open positions and stages?')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">📈 Positions</button>
+      <button onclick="sendQuickPrompt('Explain the 3.5% profit lock rule')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">🔒 Profit Lock</button>
+      <button onclick="sendQuickPrompt('How is the market regime and India VIX today?')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">📊 Regime</button>
+    </div>
+
+    <!-- Message History Stream -->
+    <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3 text-xs leading-relaxed">
+      <div class="flex gap-2 items-start">
+        <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
+        <div class="bg-zinc-900/90 text-zinc-200 border border-zinc-800 p-3 rounded-xl max-w-[85%] text-xs">
+          Hey Kaustuv! I'm your autonomous quant partner. Ask me about open trades, technical charts, market breadth, or our 6 capital security circuit breakers.
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Input Form -->
+    <form onsubmit="handleSendChatMessage(event)" class="p-3 bg-[#121215] border-t border-zinc-800 flex items-center gap-2 sm:rounded-b-2xl">
+      <input type="text" id="chat-input" placeholder="Ask Ampolin AI..." autocomplete="off" class="flex-1 bg-zinc-900 text-white placeholder-zinc-500 text-xs px-3.5 py-2.5 rounded-lg border border-zinc-800 focus:outline-none focus:border-zinc-500 mono">
+      <button type="submit" id="chat-send-btn" class="bg-white hover:bg-zinc-200 text-black px-3.5 py-2.5 rounded-lg text-xs font-semibold shrink-0 transition active:scale-95 cursor-pointer">
+        <i class="fa-solid fa-arrow-up"></i>
+      </button>
+    </form>
+  </div>
+
+  <footer class="bg-[#09090b] border-t border-zinc-800/80 py-4 text-center text-xs text-zinc-600 mono">
+    AMPOLIN AI TRADING TERMINAL &bull; MINIMALIST INSTITUTIONAL QUANT &bull; 24/7 DUAL-MARKET
   </footer>
 
   <script>
+    let activeChartOrderId = null;
+    let currentEngine = 'lw'; // 'lw' (Lightweight Pro) or 'tv' (TradingView Advanced)
+    let activeTicker = 'DIVISLAB.NS';
+    let activeTickerName = 'DIVISLAB.NS';
+    let activeEntry = null;
+    let activeSL = null;
+    window.chatSessionHistory = [];
+    window.lastOpenTrades = [];
+
     // Live IST Clock
     function updateClock() {
       const now = new Date();
@@ -839,34 +1107,439 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
     setInterval(updateClock, 1000);
     updateClock();
 
+    // Chart Engine Switcher
+    function switchChartEngine(engine) {
+      currentEngine = engine;
+      const lwBtn = document.getElementById('engine-btn-lw');
+      const tvBtn = document.getElementById('engine-btn-tv');
+      const lwBox = document.getElementById('tradingview_embed_box');
+      const tvBox = document.getElementById('tradingview_widget_container');
+      const nseNotice = document.getElementById('tv-nse-notice');
+
+      if (engine === 'tv') {
+        tvBtn.className = 'px-2.5 py-1 rounded-md bg-white text-black font-semibold transition flex items-center gap-1.5 cursor-pointer';
+        lwBtn.className = 'px-2.5 py-1 rounded-md text-zinc-400 hover:text-white transition flex items-center gap-1.5 cursor-pointer';
+        lwBox.classList.add('hidden');
+        tvBox.classList.remove('hidden');
+        renderTradingViewAdvancedWidget(activeTicker);
+      } else {
+        lwBtn.className = 'px-2.5 py-1 rounded-md bg-white text-black font-semibold transition flex items-center gap-1.5 cursor-pointer';
+        tvBtn.className = 'px-2.5 py-1 rounded-md text-zinc-400 hover:text-white transition flex items-center gap-1.5 cursor-pointer';
+        tvBox.classList.add('hidden');
+        if (nseNotice) nseNotice.classList.add('hidden');
+        lwBox.classList.remove('hidden');
+        loadCandlestickChart(activeTicker, activeEntry, activeSL);
+      }
+    }
+
+    // TradingView Advanced Real-Time Widget Renderer
+    function renderTradingViewAdvancedWidget(ticker) {
+      const container = document.getElementById('tradingview_widget_container');
+      const nseNotice = document.getElementById('tv-nse-notice');
+      if (!container) return;
+
+      container.innerHTML = '';
+
+      let tvSymbol = ticker;
+      const isNse = ticker.endsWith('.NS') || ticker === '^NSEI' || ticker === '^INDIAVIX';
+      if (ticker.endsWith('.NS')) {
+        tvSymbol = `BSE:${ticker.replace('.NS', '')}`;
+      } else if (ticker === '^NSEI') {
+        tvSymbol = 'NSE:NIFTY';
+      } else if (ticker === '^INDIAVIX') {
+        tvSymbol = 'NSE:INDIAVIX';
+      } else if (ticker.startsWith('^') || ticker.includes('-')) {
+        tvSymbol = ticker;
+      } else if (!ticker.includes(':')) {
+        tvSymbol = `NASDAQ:${ticker}`;
+      }
+
+      if (isNse && nseNotice) {
+        nseNotice.classList.remove('hidden');
+      } else if (nseNotice) {
+        nseNotice.classList.add('hidden');
+      }
+
+      // Modern TradingView Advanced Real-Time Chart Embed
+      const widgetContainer = document.createElement('div');
+      widgetContainer.className = 'tradingview-widget-container';
+      widgetContainer.style.height = '100%';
+      widgetContainer.style.width = '100%';
+
+      const innerWidgetDiv = document.createElement('div');
+      innerWidgetDiv.className = 'tradingview-widget-container__widget';
+      innerWidgetDiv.style.height = '100%';
+      innerWidgetDiv.style.width = '100%';
+      widgetContainer.appendChild(innerWidgetDiv);
+
+      const script = document.createElement('script');
+      script.type = 'text/javascript';
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+      script.async = true;
+
+      const widgetConfig = {
+        "autosize": true,
+        "symbol": tvSymbol,
+        "interval": "D",
+        "timezone": "Asia/Kolkata",
+        "theme": "dark",
+        "style": "1",
+        "locale": "en",
+        "enable_publishing": false,
+        "allow_symbol_change": true,
+        "calendar": false,
+        "hide_side_toolbar": false,
+        "withdateranges": true,
+        "support_host": "https://www.tradingview.com"
+      };
+
+      script.innerHTML = JSON.stringify(widgetConfig);
+      widgetContainer.appendChild(script);
+      container.appendChild(widgetContainer);
+    }
+
+    // Universal Stock Search Handler
+    function handleCustomSymbolSearch(e) {
+      if (e) e.preventDefault();
+      const input = document.getElementById('symbol-search-input');
+      if (!input) return;
+      let raw = input.value.trim().toUpperCase();
+      if (!raw) return;
+
+      let ticker = raw;
+      if (!ticker.includes('.') && !ticker.includes(':') && !ticker.startsWith('^')) {
+        const indianList = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'ITC', 'TATAMOTORS', 'TATASTEEL', 'WIPRO', 'DIVISLAB', 'BHARTIARTL', 'LT', 'HINDUNILVR', 'KOTAKBANK', 'AXISBANK', 'MARUTI', 'SUNPHARMA', 'BAJFINANCE', 'TITAN', 'BEL', 'TRENT'];
+        if (indianList.includes(ticker)) {
+          ticker = `${ticker}.NS`;
+        }
+      }
+
+      input.value = '';
+      switchChartSymbol(ticker, ticker, null, null, null, null, null, null);
+    }
+
+    // TradingView Lightweight Charts Pro Engine
+    let currentChart = null;
+    let currentCandleSeries = null;
+    let currentVolumeSeries = null;
+    let currentPriceLines = [];
+
+    async function loadCandlestickChart(ticker, entry = null, sl = null) {
+      const container = document.getElementById('tradingview_embed_box');
+      if (!container) return;
+
+      container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-xs mono gap-2"><i class="fa-solid fa-circle-notch fa-spin text-white"></i> Loading live candlesticks for ' + ticker + '...</div>';
+
+      try {
+        if (typeof LightweightCharts === 'undefined') {
+          let attempts = 0;
+          while (typeof LightweightCharts === 'undefined' && attempts < 25) {
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
+          }
+          if (typeof LightweightCharts === 'undefined') {
+            throw new Error('LightweightCharts library is still loading or blocked. Please refresh.');
+          }
+        }
+
+        const res = await fetch(`/api/chart-data?ticker=${encodeURIComponent(ticker)}`);
+        const data = await res.json();
+        if (data.status !== 'SUCCESS' || !data.candles || data.candles.length === 0) {
+          container.innerHTML = '<div class="flex items-center justify-center h-full text-zinc-500 text-xs mono">No candlestick data returned for ' + ticker + '</div>';
+          return;
+        }
+
+        if (currentChart) {
+          try { currentChart.remove(); } catch (e) {}
+          currentChart = null;
+        }
+
+        container.innerHTML = '';
+        currentPriceLines = [];
+
+        const width = container.clientWidth || container.offsetWidth || 800;
+        const height = container.clientHeight || container.offsetHeight || 430;
+
+        const chart = LightweightCharts.createChart(container, {
+          width: width,
+          height: height,
+          layout: {
+            background: { type: 'solid', color: '#09090b' },
+            textColor: '#a1a1aa',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            fontSize: 11,
+          },
+          grid: {
+            vertLines: { color: 'rgba(255, 255, 255, 0.04)' },
+            horzLines: { color: 'rgba(255, 255, 255, 0.04)' },
+          },
+          crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+          },
+          rightPriceScale: {
+            borderColor: 'rgba(255, 255, 255, 0.08)',
+          },
+          timeScale: {
+            borderColor: 'rgba(255, 255, 255, 0.08)',
+            timeVisible: true,
+          },
+        });
+
+        currentChart = chart;
+
+        const candleSeries = chart.addCandlestickSeries({
+          upColor: '#10b981',
+          downColor: '#ef4444',
+          borderVisible: false,
+          wickUpColor: '#10b981',
+          wickDownColor: '#ef4444',
+        });
+        currentCandleSeries = candleSeries;
+
+        const volumeSeries = chart.addHistogramSeries({
+          color: '#27272a',
+          priceFormat: { type: 'volume' },
+          priceScaleId: '',
+          scaleMargins: { top: 0.82, bottom: 0 },
+        });
+        currentVolumeSeries = volumeSeries;
+
+        const formattedCandles = data.candles.map(c => ({
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+        }));
+
+        const formattedVolumes = data.candles.map(c => ({
+          time: c.time,
+          value: c.volume,
+          color: c.close >= c.open ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)',
+        }));
+
+        candleSeries.setData(formattedCandles);
+        volumeSeries.setData(formattedVolumes);
+
+        const sym = ticker.endsWith('.NS') ? '₹' : '$';
+        if (entry !== null && entry !== undefined) {
+          const epLine = candleSeries.createPriceLine({
+            price: parseFloat(entry),
+            color: '#06b6d4',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: `Entry: ${sym}${Number(entry).toFixed(2)}`,
+          });
+          currentPriceLines.push(epLine);
+        }
+        if (sl !== null && sl !== undefined) {
+          const slLine = candleSeries.createPriceLine({
+            price: parseFloat(sl),
+            color: '#f59e0b',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Solid,
+            axisLabelVisible: true,
+            title: `SL: ${sym}${Number(sl).toFixed(2)}`,
+          });
+          currentPriceLines.push(slLine);
+        }
+
+        chart.timeScale().fitContent();
+
+        // Responsive auto-resize
+        const ro = new ResizeObserver(entries => {
+          if (entries[0] && chart && container) {
+            chart.applyOptions({ width: container.clientWidth });
+          }
+        });
+        ro.observe(container);
+
+      } catch (err) {
+        console.error('Candlestick render error:', err);
+        container.innerHTML = '<div class="text-rose-400 text-xs p-4 mono">Error loading chart: ' + err.message + '</div>';
+      }
+    }
+
+    function switchChartSymbol(ticker, tickerName, entry, sl, live, stage, orderId, btnEl) {
+      activeTicker = ticker;
+      activeTickerName = tickerName || ticker;
+      activeEntry = entry;
+      activeSL = sl;
+      activeChartOrderId = orderId;
+
+      // Update Active Tab Styling
+      document.querySelectorAll('.chart-tab').forEach(b => {
+        b.className = 'chart-tab fintech-card-subtle hover:bg-zinc-800 text-zinc-400 px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer shrink-0';
+      });
+      if (btnEl) {
+        btnEl.className = 'chart-tab active bg-white text-black font-semibold px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer shrink-0';
+      } else {
+        const match = document.querySelector(`.chart-tab[data-ticker="${ticker}"]`);
+        if (match) match.className = 'chart-tab active bg-white text-black font-semibold px-3 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer shrink-0';
+      }
+
+      // Update Position Bar Views
+      const posDetails = document.getElementById('cp-pos-details');
+      const posBrowse = document.getElementById('cp-browse-details');
+      const cpActions = document.getElementById('cp-actions');
+
+      if (entry !== null && entry !== undefined && orderId) {
+        posDetails.classList.remove('hidden');
+        posBrowse.classList.add('hidden');
+        cpActions.classList.remove('hidden');
+
+        document.getElementById('cp-ticker').innerText = tickerName;
+        const sym = tickerName.endsWith('.NS') ? '₹' : '$';
+        document.getElementById('cp-entry').innerText = sym + Number(entry).toFixed(2);
+        document.getElementById('cp-live').innerText = sym + Number(live || entry).toFixed(2);
+        document.getElementById('cp-sl').innerText = sym + Number(sl).toFixed(2);
+        document.getElementById('cp-stage').innerText = stage || 'ACTIVE';
+
+        // Only show "Lock +2%" if gain >= +2.0%, and Breakeven if gain >= 0%
+        const gainPct = entry > 0 ? (((live || entry) - entry) / entry * 100) : 0;
+        const btnLock = document.getElementById('btn-quick-lock');
+        const btnBE = document.getElementById('btn-quick-be');
+        if (btnLock) {
+          if (gainPct >= 2.0) btnLock.classList.remove('hidden');
+          else btnLock.classList.add('hidden');
+        }
+        if (btnBE) {
+          if (gainPct >= 0) btnBE.classList.remove('hidden');
+          else btnBE.classList.add('hidden');
+        }
+      } else {
+        posDetails.classList.add('hidden');
+        posBrowse.classList.remove('hidden');
+        cpActions.classList.add('hidden');
+        document.getElementById('browse-symbol-title').innerText = tickerName || ticker;
+      }
+
+      // Update external TradingView link
+      const extBtn = document.getElementById('btn-open-tv');
+      if (extBtn) {
+        let tvSym = ticker;
+        if (ticker.endsWith('.NS')) tvSym = `NSE:${ticker.replace('.NS', '')}`;
+        else if (ticker === '^NSEI') tvSym = 'NSE:NIFTY';
+        else if (ticker === '^INDIAVIX') tvSym = 'NSE:INDIAVIX';
+        else if (!ticker.includes(':') && !ticker.startsWith('^')) tvSym = `NASDAQ:${ticker}`;
+        extBtn.href = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSym)}`;
+      }
+
+      if (currentEngine === 'tv') {
+        renderTradingViewAdvancedWidget(ticker);
+      } else {
+        loadCandlestickChart(ticker, entry, sl);
+      }
+    }
+
+    // 1-Click Action Controls
+    async function triggerQuickAction(actionType) {
+      if (!activeChartOrderId) {
+        alert('Please select an active position first.');
+        return;
+      }
+      await triggerAction(activeChartOrderId, actionType);
+    }
+
+    async function triggerAction(orderId, actionType) {
+      const actionName = actionType === 'breakeven' ? 'MOVE TO BREAKEVEN' : (actionType === 'lock-profit' ? 'LOCK +2% PROFIT' : 'SQUARE OFF / CLOSE');
+      if (!confirm(`Confirm action [${actionName}] for trade ${orderId}?`)) return;
+
+      try {
+        const res = await fetch(`/api/trades/${actionType}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: orderId })
+        });
+        const data = await res.json();
+        alert(data.message || `Action executed successfully!`);
+        await loadTrades();
+        await loadStatus();
+      } catch (err) {
+        alert('Action error: ' + err);
+      }
+    }
+
+    // Animated Mobile Navigation Switcher (Smooth, No Glitches)
+    function switchMobileTab(tab) {
+      const dashboardSec = document.getElementById('section-dashboard');
+      const chartsSec = document.getElementById('section-charts');
+      const rulesSec = document.getElementById('section-rules');
+      const chatDrawer = document.getElementById('chat-drawer');
+
+      ['dashboard', 'charts', 'chat', 'rules'].forEach(t => {
+        const btn = document.getElementById(`nav-btn-${t}`);
+        if (btn) {
+          btn.className = 'mobile-tab-btn flex flex-col items-center justify-center px-3.5 py-1.5 rounded-xl gap-1 text-zinc-400 hover:text-zinc-200 cursor-pointer';
+        }
+      });
+
+      const activeBtn = document.getElementById(`nav-btn-${tab}`);
+      if (activeBtn) {
+        activeBtn.className = 'mobile-tab-btn active flex flex-col items-center justify-center px-3.5 py-1.5 rounded-xl gap-1 text-white cursor-pointer';
+      }
+
+      if (tab === 'chat') {
+        chatDrawer.classList.remove('hidden');
+        document.getElementById('chat-input')?.focus();
+      } else {
+        chatDrawer.classList.add('hidden');
+        if (tab === 'charts') {
+          chartsSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          if (currentChart) {
+            setTimeout(() => {
+              const box = document.getElementById('tradingview_embed_box');
+              if (box && currentChart) currentChart.applyOptions({ width: box.clientWidth });
+            }, 300);
+          }
+        } else if (tab === 'rules') {
+          rulesSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          dashboardSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }
+
     // Load Initial Data
     async function initDashboard() {
+      await loadTrades();
       await loadStatus();
       await loadRules();
-      await loadTrades();
+
+      // Automatically select first active position, or default to AAPL
+      if (window.lastOpenTrades && window.lastOpenTrades.length > 0) {
+        const first = window.lastOpenTrades[0];
+        const live = parseFloat(first.current_price || first.entry_price);
+        switchChartSymbol(first.ticker, first.ticker, first.entry_price, first.stop_loss, live, first.stage, first.order_id, null);
+      } else {
+        switchChartSymbol('AAPL', 'AAPL', null, null, null, null, null, null);
+      }
     }
 
     async function loadStatus() {
       try {
         const res = await fetch('/api/status');
         const data = await res.json();
-        const realized = data.daily_pnl || 0.0;
+        const realized = data.total_realized_pnl !== undefined ? data.total_realized_pnl : (data.daily_pnl || 0.0);
         const unrealized = data.unrealized_pnl || 0.0;
         const total = data.total_pnl !== undefined ? data.total_pnl : (realized + unrealized);
-        const pnlSign = total >= 0 ? '+' : '';
-        const uSign = unrealized >= 0 ? '+' : '';
-        const rSign = realized >= 0 ? '+' : '';
+        const formatINR = (val) => {
+          const num = Number(val) || 0.0;
+          const sign = num < 0 ? '-' : (num > 0 ? '+' : '');
+          return `${sign}₹${Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        };
 
         const pnlEl = document.getElementById('metric-pnl');
-        pnlEl.innerText = pnlSign + '₹' + total.toFixed(2);
+        pnlEl.innerText = formatINR(total);
         if (total > 0) {
-          pnlEl.className = 'text-xl sm:text-2xl font-bold text-emerald-400 mono';
+          pnlEl.className = 'text-lg sm:text-2xl font-bold text-emerald-400 mono tabular-nums';
         } else if (total < 0) {
-          pnlEl.className = 'text-xl sm:text-2xl font-bold text-rose-400 mono';
+          pnlEl.className = 'text-lg sm:text-2xl font-bold text-rose-400 mono tabular-nums';
         } else {
-          pnlEl.className = 'text-xl sm:text-2xl font-bold text-white mono';
+          pnlEl.className = 'text-lg sm:text-2xl font-bold text-white mono tabular-nums';
         }
-        document.getElementById('metric-pnl-breakdown').innerText = `Floating: ${uSign}₹${unrealized.toFixed(2)} | Realized: ${rSign}₹${realized.toFixed(2)}`;
+        document.getElementById('metric-pnl-breakdown').innerText = `Floating: ${formatINR(unrealized)} | Realized: ${formatINR(realized)}`;
 
         if (data.portfolio_equity !== undefined) {
           document.getElementById('metric-equity').innerText = '₹' + Number(data.portfolio_equity).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -874,14 +1547,26 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         }
 
         document.getElementById('metric-winrate').innerText = (data.win_rate * 100).toFixed(1) + '%';
+        const winrateSubEl = document.getElementById('metric-winrate-sub');
+        if (winrateSubEl && window.lastOpenTrades && window.lastOpenTrades.length > 0) {
+          const profitable = window.lastOpenTrades.filter(t => {
+            const entry = parseFloat(t.entry_price || 0);
+            const live = parseFloat(t.current_price || entry);
+            const pnl = t.pnl !== null && t.pnl !== undefined ? parseFloat(t.pnl) : (live - entry);
+            return pnl >= 0;
+          }).length;
+          winrateSubEl.innerText = `${profitable}/${window.lastOpenTrades.length} Positions in Profit`;
+        } else if (winrateSubEl) {
+          winrateSubEl.innerText = 'Real-Time Win Rate';
+        }
         document.getElementById('metric-open-trades').innerText = data.open_positions;
-        document.getElementById('badge-brain').innerText = data.ai_model;
+        document.getElementById('badge-brain').innerText = data.ai_model || 'Gemini 3.5 • Groq';
 
         if (data.regime) {
           document.getElementById('metric-breadth').innerText = data.regime.market_breadth_pct.toFixed(1) + '%';
           document.getElementById('metric-breadth-regime').innerText = data.regime.breadth_regime;
           document.getElementById('metric-vix').innerText = data.regime.india_vix.toFixed(2);
-          document.getElementById('metric-dynamic-risk').innerText = 'Risk: ' + (data.regime.dynamic_risk_pct * 100).toFixed(2) + '%';
+          document.getElementById('metric-dynamic-risk').innerText = 'Dynamic Risk: ' + (data.regime.dynamic_risk_pct * 100).toFixed(2) + '%';
           if (data.regime.pcr_ratio) {
             const pcrEl = document.getElementById('badge-pcr');
             if (pcrEl) pcrEl.innerText = `PCR: ${data.regime.pcr_ratio} • Accumulation`;
@@ -907,7 +1592,7 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         alert('Position management error: ' + e);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Sweep Stops & Profit Lock';
+        btn.innerHTML = '<i class="fa-solid fa-arrows-split-up-and-left text-[10px] text-zinc-400"></i> Sweep &amp; Lock Profits';
       }
     }
 
@@ -928,6 +1613,65 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       try {
         const res = await fetch('/api/trades');
         const data = await res.json();
+
+        // Extract active open positions (exclude closed trades)
+        const openTrades = (data.trades || []).filter(t => t.status !== 'CLOSED');
+        window.lastOpenTrades = openTrades;
+
+        // Dynamically update open positions count & sub-label
+        const openCountEl = document.getElementById('metric-open-trades');
+        if (openCountEl) openCountEl.innerText = openTrades.length;
+        const subEl = document.getElementById('metric-open-trades-sub');
+        if (subEl) {
+          const lockedTrades = openTrades.filter(t => t.stage === 'STAGE_PROFIT_LOCKED' || t.stage === 'STAGE_PARTIAL_BOOKED');
+          if (lockedTrades.length > 0) {
+            subEl.className = 'text-[10px] sm:text-[11px] text-emerald-400 mt-1';
+            subEl.innerText = `${lockedTrades.length} Profit Locked (${lockedTrades.map(t => t.ticker.replace('.NS','')).join(', ')})`;
+          } else if (openTrades.length > 0) {
+            subEl.className = 'text-[10px] sm:text-[11px] text-zinc-500 mt-1';
+            subEl.innerText = '1R Breakeven • 3.5% Lock Active';
+          } else {
+            subEl.className = 'text-[10px] sm:text-[11px] text-zinc-500 mt-1';
+            subEl.innerText = '100% Cash Buffer (Safe)';
+          }
+        }
+
+        // Render Dynamic Active Holdings Tabs
+        const holdingsEl = document.getElementById('active-holdings-tabs');
+        if (holdingsEl) {
+          if (openTrades.length === 0) {
+            holdingsEl.innerHTML = '<span class="text-[11px] text-zinc-500 mono py-1">No open positions (100% Cash)</span>';
+          } else {
+            holdingsEl.innerHTML = openTrades.map(t => {
+              const isNse = t.ticker.endsWith('.NS');
+              const flag = isNse ? '🇮🇳' : '🇺🇸';
+              const cleanName = t.ticker.replace('.NS', '');
+              const entry = parseFloat(t.entry_price || 0);
+              const live = parseFloat(t.current_price || entry);
+              const pnlPct = t.pnl_percentage !== null && t.pnl_percentage !== undefined ? parseFloat(t.pnl_percentage) : ((live - entry) / (entry || 1) * 100);
+              const badgeColor = pnlPct >= 0 ? 'text-emerald-400 bg-emerald-950/60 border border-emerald-800/40' : 'text-rose-400 bg-rose-950/60 border border-rose-800/40';
+              const sign = pnlPct >= 0 ? '+' : '';
+              return `
+                <button onclick="switchChartSymbol('${t.ticker}', '${t.ticker}', ${entry}, ${t.stop_loss}, ${live}, '${t.stage}', '${t.order_id}', this)" class="chart-tab fade-in-up fintech-card-subtle hover:bg-zinc-800 text-zinc-300 px-2.5 py-1.5 rounded-lg text-xs mono flex items-center gap-1.5 transition cursor-pointer shrink-0" data-ticker="${t.ticker}">
+                  <span>${flag} ${cleanName}</span>
+                  <span class="text-[10px] ${badgeColor} px-1.5 py-0.2 rounded font-bold">${sign}${pnlPct.toFixed(2)}%</span>
+                </button>
+              `;
+            }).join('');
+          }
+        }
+
+        // If the currently active chart holding was closed, immediately switch chart to next open trade
+        if (activeChartOrderId && !openTrades.some(t => t.order_id === activeChartOrderId)) {
+          if (openTrades.length > 0) {
+            const nextTrade = openTrades[0];
+            const live = parseFloat(nextTrade.current_price || nextTrade.entry_price);
+            switchChartSymbol(nextTrade.ticker, nextTrade.ticker, nextTrade.entry_price, nextTrade.stop_loss, live, nextTrade.stage, nextTrade.order_id, null);
+          } else {
+            switchChartSymbol('AAPL', 'AAPL', null, null, null, null, null, null);
+          }
+        }
+
         const tbody = document.getElementById('trades-tbody');
         if (!data.trades || data.trades.length === 0) {
           tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-zinc-600">No trades recorded in database yet.</td></tr>';
@@ -946,28 +1690,43 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
           const pnlPct = t.pnl_percentage !== null && t.pnl_percentage !== undefined ? parseFloat(t.pnl_percentage) : ((live - entry) / (entry || 1) * 100);
           const pnlSign = pnlVal >= 0 ? '+' : '';
           const pnlColor = pnlVal > 0 ? 'text-emerald-400 font-semibold' : (pnlVal < 0 ? 'text-rose-400 font-semibold' : 'text-zinc-400');
+          const tvSymbol = isNse ? `NSE:${t.ticker.replace('.NS','')}` : `NASDAQ:${t.ticker}`;
 
-          let stageBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-800 bg-zinc-900 text-zinc-300">${t.status}</span>`;
-          if (t.stage === 'STAGE_PROFIT_LOCKED') {
-            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-emerald-800/80 bg-emerald-950/60 text-emerald-300 font-medium">🔒 +2% LOCKED</span>';
+          let stageBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-800 bg-zinc-900 text-zinc-300 font-mono">${t.status}</span>`;
+          if (t.stage === 'STAGE_PARTIAL_BOOKED') {
+            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-emerald-800/80 bg-emerald-950/60 text-emerald-300 font-mono font-medium">🎯 50% BOOKED (TRAIL)</span>';
+          } else if (t.stage === 'STAGE_PROFIT_LOCKED') {
+            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-emerald-800/80 bg-emerald-950/60 text-emerald-300 font-mono font-medium">🔒 +2% LOCKED</span>';
           } else if (t.stage === 'STAGE_BREAKEVEN') {
-            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-blue-800/80 bg-blue-950/60 text-blue-300 font-medium">🛡️ BREAKEVEN</span>';
+            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-blue-800/80 bg-blue-950/60 text-blue-300 font-mono font-medium">🛡️ BREAKEVEN</span>';
           } else if (t.status === 'CLOSED') {
-            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-700 bg-zinc-800 text-zinc-400 font-medium">CLOSED</span>';
+            stageBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] border border-zinc-700 bg-zinc-800 text-zinc-400 font-mono font-medium">CLOSED (BANKED)</span>';
           }
 
+          const beBtn = pnlPct >= 0 ? `<button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'breakeven')" title="Move to Breakeven (0% Risk)" class="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] transition cursor-pointer">🎯</button>` : '';
+          const lockBtn = pnlPct >= 2.0 ? `<button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'lock-profit')" title="Lock +2% Profit Floor" class="p-1 rounded bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 text-[11px] transition cursor-pointer">🔒</button>` : '';
+          const closeBtn = `<button onclick="event.stopPropagation(); triggerAction('${t.order_id}', 'close')" title="Square Off Position" class="p-1 rounded bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-[11px] transition cursor-pointer">✕</button>`;
+
+          const controls = t.status !== 'CLOSED' ? `
+            <div class="flex items-center justify-center gap-1">
+              ${beBtn}
+              ${lockBtn}
+              ${closeBtn}
+            </div>
+          ` : `<span class="text-zinc-600 text-center block">&mdash;</span>`;
+
           return `
-            <tr class="hover:bg-zinc-900/60 transition mono text-xs">
+            <tr onclick="switchChartSymbol('${t.ticker}', '${t.ticker}', ${entry}, ${t.stop_loss}, ${live}, '${t.stage}', '${t.order_id}', null)" class="fade-in-up hover:bg-zinc-900/60 transition mono text-xs cursor-pointer">
               <td class="py-2.5 px-3 font-semibold text-white">${flag}${t.ticker}</td>
               <td class="py-2.5 px-3"><span class="font-bold text-white">${t.action}</span></td>
-              <td class="py-2.5 px-3 text-zinc-300">${qty}</td>
-              <td class="py-2.5 px-3 text-zinc-300">${sym}${entry.toFixed(2)}</td>
-              <td class="py-2.5 px-3 text-white font-medium">${sym}${live.toFixed(2)}</td>
-              <td class="py-2.5 px-3 text-zinc-300">${sym}${invested.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-              <td class="py-2.5 px-3 text-zinc-400">${sym}${parseFloat(t.stop_loss).toFixed(2)}</td>
-              <td class="py-2.5 px-3 text-zinc-300">${sym}${parseFloat(t.take_profit).toFixed(2)}</td>
-              <td class="py-2.5 px-3 ${pnlColor}">${pnlSign}${sym}${pnlVal.toFixed(2)} (${pnlSign}${pnlPct.toFixed(2)}%)</td>
+              <td class="py-2.5 px-3 text-zinc-300 tabular-nums">${qty}</td>
+              <td class="py-2.5 px-3 text-zinc-300 tabular-nums">${sym}${entry.toFixed(2)}</td>
+              <td class="py-2.5 px-3 text-white font-medium tabular-nums">${sym}${live.toFixed(2)}</td>
+              <td class="py-2.5 px-3 text-zinc-300 tabular-nums">${sym}${invested.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+              <td class="py-2.5 px-3 text-zinc-400 tabular-nums">${sym}${parseFloat(t.stop_loss).toFixed(2)}</td>
+              <td class="py-2.5 px-3 ${pnlColor} tabular-nums">${pnlSign}${sym}${pnlVal.toFixed(2)} (${pnlSign}${pnlPct.toFixed(2)}%)</td>
               <td class="py-2.5 px-3">${stageBadge}</td>
+              <td class="py-2.5 px-3 text-center">${controls}</td>
             </tr>
           `;
         }).join('');
@@ -976,9 +1735,18 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    function updateMarketLabel() {
+      const market = document.getElementById('select-market') ? document.getElementById('select-market').value : 'NSE';
+      const scanBtn = document.getElementById('btn-scan');
+      if (scanBtn) {
+        scanBtn.innerHTML = `<i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan ${market}`;
+      }
+    }
+
     async function runPipeline() {
       const btn = document.getElementById('btn-pipeline');
       const tf = document.getElementById('select-tf').value;
+      const market = document.getElementById('select-market') ? document.getElementById('select-market').value : 'NSE';
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-black"></i> Executing Pipeline...';
 
@@ -986,7 +1754,7 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         const res = await fetch('/api/run-pipeline', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ timeframe: tf, dry_run: true })
+          body: JSON.stringify({ timeframe: tf, market: market, dry_run: true })
         });
         const data = await res.json();
         await runScan();
@@ -996,132 +1764,90 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         alert('Pipeline execution error: ' + e);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-play text-[10px]"></i> Run Autonomous Pipeline';
+        btn.innerHTML = '<i class="fa-solid fa-play text-[10px]"></i> Run Pipeline';
       }
     }
 
     async function runScan() {
       const btn = document.getElementById('btn-scan');
       const tf = document.getElementById('select-tf').value;
+      const market = document.getElementById('select-market') ? document.getElementById('select-market').value : 'NSE';
       btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning...';
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Scanning ${market}...`;
 
       try {
         const res = await fetch('/api/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ timeframe: tf })
+          body: JSON.stringify({ timeframe: tf, market: market, dry_run: true })
         });
-        const result = await res.json();
-        renderCandidates(result.data || []);
+        const data = await res.json();
+        renderCandidates(data.approved_candidates || data.data || []);
+        renderAIDecision(data.ai_decisions || []);
       } catch (e) {
         alert('Scan error: ' + e);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan Candidates';
+        btn.innerHTML = `<i class="fa-solid fa-magnifying-glass text-[10px] text-zinc-400"></i> Scan ${market}`;
       }
     }
 
-    function renderCandidates(approvedList) {
+    function renderCandidates(candidates) {
       const container = document.getElementById('candidates-container');
-      document.getElementById('scan-count').innerText = `${approvedList.length} approved setups`;
+      const countEl = document.getElementById('scan-count');
+      countEl.innerText = `${candidates.length} approved`;
 
-      if (!approvedList || approvedList.length === 0) {
+      if (candidates.length === 0) {
         container.innerHTML = `
-          <div class="text-center py-12 text-zinc-600 text-xs">
-            <i class="fa-solid fa-shield text-xl mb-2 text-zinc-700 block"></i>
-            No candidate setups satisfied the strict criteria: EMA 20/50 + RSI 48-68 + VectorBT Win Rate &ge; 52% + Weekly Confluence.
-          </div>`;
+          <div class="text-center py-10 text-zinc-600 text-xs">
+            <i class="fa-solid fa-circle-exclamation text-xl mb-1 text-zinc-700 block"></i>
+            No candidate setups cleared the VectorBT backtest threshold (&ge;45% Win Rate, Profit Factor &ge;1.25).
+          </div>
+        `;
         return;
       }
 
-      container.innerHTML = approvedList.map(item => {
-        const s = item.setup;
-        const b = item.backtest;
-        const d = item.decision;
-        const sym = s.currency === 'USD' ? '$' : '₹';
-
+      container.innerHTML = candidates.map(c => {
+        const s = c.setup;
+        const b = c.backtest;
+        const isNse = s.ticker.endsWith('.NS') || s.ticker.endsWith('.BO');
+        const sym = isNse ? '₹' : '$';
+        const winRateStr = (b && b.win_rate !== undefined) ? `${(b.win_rate * 100).toFixed(1)}%` : 'Approved';
         return `
-          <div class="bg-black rounded-lg p-3.5 border border-zinc-800/80 hover:border-zinc-700 transition">
-            <div class="flex justify-between items-start mb-2">
-              <div>
-                <span class="text-sm font-bold text-white mono">${s.ticker}</span>
-                <span class="ml-2 text-[10px] bg-zinc-900 text-zinc-300 border border-zinc-800 px-1.5 py-0.5 rounded mono">${s.breakout_type}</span>
-                ${s.weekly_trend === 'BULLISH_CONFLUENCE' ? '<span class="ml-1 text-[10px] bg-zinc-850 text-white border border-zinc-700 px-1.5 py-0.5 rounded mono">1W CONFLUENCE</span>' : ''}
-              </div>
-              <div class="text-right">
-                <div class="text-sm font-bold text-white mono">${sym}${s.close}</div>
-                <div class="text-[10px] text-zinc-500">ATR: ${sym}${s.atr}</div>
-              </div>
-            </div>
-
-            <!-- Technical Gauges (Minimalist Monochrome) -->
-            <div class="grid grid-cols-4 gap-2 text-[11px] bg-zinc-950 p-2 rounded border border-zinc-850 mb-2.5 mono">
-              <div>
-                <span class="text-zinc-600 block text-[9px] uppercase tracking-wider">EMA 20/50</span>
-                <span class="text-zinc-200">${sym}${s.ema_fast} &gt; ${sym}${s.ema_slow}</span>
-              </div>
-              <div>
-                <span class="text-zinc-600 block text-[9px] uppercase tracking-wider">RSI (14)</span>
-                <span class="text-white font-bold">${s.rsi}</span>
-              </div>
-              <div>
-                <span class="text-zinc-600 block text-[9px] uppercase tracking-wider">VBT Win%</span>
-                <span class="text-white font-bold">${(b.win_rate * 100).toFixed(1)}%</span>
-              </div>
-              <div>
-                <span class="text-zinc-600 block text-[9px] uppercase tracking-wider">Expectancy</span>
-                <span class="text-white font-bold">${sym}${b.expectancy.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <!-- Latency & AI Conviction -->
-            <div class="flex justify-between items-center text-xs pt-1 border-t border-zinc-850">
-              <span class="text-zinc-500 text-[10px] mono">
-                <i class="fa-solid fa-bolt text-zinc-600"></i> ${b.execution_time_ms}ms vectorized backtest
+          <div class="fintech-card-subtle p-3.5 rounded-lg text-xs space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-white mono">${s.ticker}</span>
+              <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] mono">
+                Win Rate: ${winRateStr}
               </span>
-              <button onclick='displayAIDecision(${JSON.stringify(d).replace(/'/g, "&#39;")})' class="text-zinc-300 hover:text-white text-[11px] font-medium flex items-center gap-1 transition">
-                AI Evaluation (${(d.confidence * 100).toFixed(0)}% Conviction) <i class="fa-solid fa-arrow-right text-[9px]"></i>
-              </button>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-zinc-400 text-[11px] mono">
+              <div>Close: <span class="text-white">${sym}${s.close.toFixed(2)}</span></div>
+              <div>RSI (14): <span class="text-white">${s.rsi.toFixed(1)}</span></div>
+              <div>SL: <span class="text-zinc-300">${sym}${s.suggested_sl.toFixed(2)}</span></div>
+              <div>TP: <span class="text-zinc-300">${sym}${s.suggested_tp.toFixed(2)}</span></div>
             </div>
           </div>
         `;
       }).join('');
-
-      if (approvedList.length > 0) {
-        displayAIDecision(approvedList[0].decision);
-      }
     }
 
-    function displayAIDecision(d) {
+    function renderAIDecision(decisions) {
       const card = document.getElementById('ai-decision-card');
-      const sym = d.ticker.endsWith('.NS') ? '₹' : '$';
+      if (!decisions || decisions.length === 0) return;
+      const d = decisions[0];
+      const conf = d.confidence !== undefined ? (d.confidence * 100).toFixed(0) : '85';
+      const rr = d.risk_reward_ratio || '2.0';
+      const hold = d.holding_period_days || '5-10';
       card.innerHTML = `
-        <div class="flex justify-between items-center border-b border-zinc-850 pb-2">
-          <span class="mono font-bold text-white text-sm">${d.ticker}</span>
-          <span class="px-2 py-0.5 rounded text-xs font-bold border border-white bg-white text-black mono">${d.action}</span>
+        <div class="flex justify-between items-center border-b border-zinc-800 pb-2">
+          <span class="font-bold text-white mono">${d.ticker}</span>
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold mono ${d.action === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400'}">${d.action} (${conf}% Conviction)</span>
         </div>
-        <div class="grid grid-cols-3 gap-2 text-center py-2 bg-zinc-950 rounded border border-zinc-850 mono">
-          <div>
-            <span class="text-[9px] text-zinc-500 block uppercase tracking-wider">ENTRY</span>
-            <span class="font-bold text-white">${sym}${d.entry_price}</span>
-          </div>
-          <div>
-            <span class="text-[9px] text-zinc-500 block uppercase tracking-wider">STOP LOSS</span>
-            <span class="font-bold text-zinc-400">${sym}${d.stop_loss}</span>
-          </div>
-          <div>
-            <span class="text-[9px] text-zinc-500 block uppercase tracking-wider">TARGET</span>
-            <span class="font-bold text-white">${sym}${d.take_profit}</span>
-          </div>
-        </div>
-        <div class="text-[11px] text-zinc-400 leading-relaxed pt-1">
-          <span class="text-white font-medium">Thesis:</span> ${d.rationale}
-        </div>
-        <div class="text-[10px] text-zinc-500 mono pt-1 border-t border-zinc-850 flex justify-between">
-          <span>Confidence: ${(d.confidence * 100).toFixed(0)}%</span>
-          <span>R:R: 1:${d.risk_reward_ratio}</span>
-          <span>Hold: ~${d.holding_period_days}d</span>
+        <p class="text-zinc-300 text-[11px] leading-relaxed">${d.rationale}</p>
+        <div class="pt-1.5 border-t border-zinc-850 flex justify-between text-[10px] text-zinc-500 mono">
+          <span>R:R: 1:${rr}</span>
+          <span>Holding: ${hold} Days</span>
         </div>
       `;
     }
@@ -1134,7 +1860,7 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       try {
         const res = await fetch('/api/eod-reflection', { method: 'POST' });
         const data = await res.json();
-        alert('EOD Post-Mortem Reflection Finished! Active rules verified and updated.');
+        alert('EOD Reflection complete! Rules verified and database synced.');
         await loadRules();
       } catch (e) {
         alert('EOD reflection error: ' + e);
@@ -1144,18 +1870,17 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
+    // In-App Chat Functions
     function toggleChatDrawer() {
       const drawer = document.getElementById('chat-drawer');
       drawer.classList.toggle('hidden');
       if (!drawer.classList.contains('hidden')) {
         document.getElementById('chat-input').focus();
-        const msgs = document.getElementById('chat-messages');
-        msgs.scrollTop = msgs.scrollHeight;
       }
     }
 
-    function sendQuickPrompt(txt) {
-      document.getElementById('chat-input').value = txt;
+    function sendQuickPrompt(promptText) {
+      document.getElementById('chat-input').value = promptText;
       handleSendChatMessage(new Event('submit'));
     }
 
@@ -1165,35 +1890,28 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       const msg = input.value.trim();
       if (!msg) return;
 
-      input.value = '';
       const container = document.getElementById('chat-messages');
+      input.value = '';
 
-      // User Bubble
       container.innerHTML += `
-        <div class="flex justify-end">
-          <div class="bg-white text-black font-medium p-3 rounded-xl max-w-[85%] text-xs shadow-sm">
+        <div class="flex gap-2 items-start justify-end chat-msg">
+          <div class="bg-white text-black p-3 rounded-xl max-w-[85%] text-xs font-medium">
             ${escapeHtml(msg)}
           </div>
         </div>
       `;
       container.scrollTop = container.scrollHeight;
 
-      // Typing indicator
       const typingId = 'typing-' + Date.now();
       container.innerHTML += `
-        <div id="${typingId}" class="flex gap-2 items-start">
+        <div id="${typingId}" class="flex gap-2 items-start chat-msg">
           <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
-          <div class="bg-zinc-900/90 text-zinc-400 border border-zinc-800 p-2.5 rounded-xl max-w-[85%] text-xs flex items-center gap-1.5 mono">
-            <span class="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce"></span>
-            <span class="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style="animation-delay: 0.15s"></span>
-            <span class="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style="animation-delay: 0.3s"></span>
+          <div class="bg-zinc-900/80 text-zinc-400 border border-zinc-800 p-2.5 rounded-xl text-xs flex items-center gap-1.5 mono">
+            <i class="fa-solid fa-circle-notch fa-spin text-emerald-400"></i> Thinking...
           </div>
         </div>
       `;
       container.scrollTop = container.scrollHeight;
-
-      if (!window.chatSessionHistory) window.chatSessionHistory = [];
-      window.chatSessionHistory.push({ role: 'user', content: msg });
 
       try {
         const res = await fetch('/api/chat', {
@@ -1205,16 +1923,17 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
         document.getElementById(typingId)?.remove();
 
         if (data.reply) {
+          window.chatSessionHistory.push({ role: 'user', content: msg });
           window.chatSessionHistory.push({ role: 'assistant', content: data.reply });
         }
 
         const formatted = (data.reply || "No reply generated.")
-          .replace(/\\n\\n/g, '<br><br>')
-          .replace(/\\n/g, '<br>')
-          .replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
+          .replace(/\n\n/g, '<br><br>')
+          .replace(/\n/g, '<br>')
+          .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
 
         container.innerHTML += `
-          <div class="flex gap-2 items-start">
+          <div class="flex gap-2 items-start chat-msg">
             <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
             <div class="bg-zinc-900/90 text-zinc-200 border border-zinc-800 p-3 rounded-xl max-w-[85%] text-xs leading-relaxed">
               ${formatted}
@@ -1224,7 +1943,7 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       } catch (err) {
         document.getElementById(typingId)?.remove();
         container.innerHTML += `
-          <div class="flex gap-2 items-start">
+          <div class="flex gap-2 items-start chat-msg">
             <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
             <div class="bg-rose-950/40 text-rose-300 border border-rose-900/50 p-3 rounded-xl max-w-[85%] text-xs">
               Error: ${err.message || 'Could not connect to AI'}
@@ -1240,59 +1959,19 @@ DASHBOARD_HTML_PAGE = """<!DOCTYPE html>
       return text.replace(/[&<>"']/g, function(m) { return map[m]; });
     }
 
-    window.onload = initDashboard;
+    window.onload = function() {
+      initDashboard();
+      // Auto-refresh metrics, holdings, and status every 30 seconds
+      setInterval(async () => {
+        try {
+          await loadTrades();
+          await loadStatus();
+        } catch (e) {
+          console.warn('Auto-refresh polling error:', e);
+        }
+      }, 30000);
+    };
   </script>
-
-  <!-- Floating In-App AI Chat Trigger -->
-  <button onclick="toggleChatDrawer()" id="btn-open-chat" class="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 bg-white hover:bg-zinc-200 text-black font-semibold px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-xs transition active:scale-95 border border-zinc-200 cursor-pointer">
-    <i class="fa-solid fa-sparkles text-black"></i>
-    <span>Chat with AI</span>
-  </button>
-
-  <!-- In-App AI Chat Drawer (Mobile Bottom Sheet + Desktop Floating Window) -->
-  <div id="chat-drawer" class="fixed inset-x-0 bottom-0 sm:inset-auto sm:bottom-6 sm:right-6 z-50 w-full sm:w-[400px] h-[85vh] sm:h-[540px] bg-black border-t sm:border border-zinc-800 sm:rounded-2xl shadow-2xl flex flex-col hidden transition-all">
-    <!-- Chat Header -->
-    <div class="px-4 py-3 bg-zinc-950 border-b border-zinc-800 flex justify-between items-center sm:rounded-t-2xl">
-      <div class="flex items-center gap-2.5">
-        <img src="/static/ampolin_icon_sq.png" alt="Ampolin AI" class="w-6 h-6 rounded border border-zinc-800 object-cover">
-        <div>
-          <div class="text-xs font-bold text-white mono flex items-center gap-1.5">
-            AMPOLIN AI <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          </div>
-          <p class="text-[10px] text-zinc-500">Dual-Engine &bull; Gemini Flash &amp; Groq</p>
-        </div>
-      </div>
-      <button onclick="toggleChatDrawer()" class="text-zinc-400 hover:text-white text-base p-1.5 rounded-lg hover:bg-zinc-900 transition cursor-pointer">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
-    </div>
-
-    <!-- Quick Prompt Chips -->
-    <div class="px-3 py-2 bg-zinc-950/70 border-b border-zinc-850 flex gap-1.5 overflow-x-auto text-[11px] mono">
-      <button onclick="sendQuickPrompt('How is the market regime and India VIX today?')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">📊 Regime</button>
-      <button onclick="sendQuickPrompt('What are our active open positions and stages?')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">📈 Positions</button>
-      <button onclick="sendQuickPrompt('Explain the 3.5% profit lock rule')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">🛡️ Profit Lock</button>
-      <button onclick="sendQuickPrompt('What is our VectorBT filter criteria?')" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-md border border-zinc-800 whitespace-nowrap text-[10px] cursor-pointer">⚡ VectorBT</button>
-    </div>
-
-    <!-- Message History Stream -->
-    <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3 text-xs leading-relaxed">
-      <div class="flex gap-2 items-start">
-        <div class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-white shrink-0 mono font-bold">A</div>
-        <div class="bg-zinc-900/90 text-zinc-200 border border-zinc-800 p-3 rounded-xl max-w-[85%] text-xs">
-          Hey Kaustuv! I'm your autonomous quant partner. Ask me about open trades, market breadth, scanning setups, or risk rules.
-        </div>
-      </div>
-    </div>
-
-    <!-- Chat Input Form -->
-    <form onsubmit="handleSendChatMessage(event)" class="p-3 bg-zinc-950 border-t border-zinc-800 flex items-center gap-2 sm:rounded-b-2xl">
-      <input type="text" id="chat-input" placeholder="Ask Ampolin AI..." autocomplete="off" class="flex-1 bg-zinc-900 text-white placeholder-zinc-500 text-xs px-3.5 py-2.5 rounded-lg border border-zinc-800 focus:outline-none focus:border-zinc-500 mono">
-      <button type="submit" id="chat-send-btn" class="bg-white hover:bg-zinc-200 text-black px-3.5 py-2.5 rounded-lg text-xs font-semibold shrink-0 transition active:scale-95 cursor-pointer">
-        <i class="fa-solid fa-arrow-up"></i>
-      </button>
-    </form>
-  </div>
 </body>
 </html>
 """

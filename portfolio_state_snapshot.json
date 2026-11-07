@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "timestamp": "2026-11-07T13:29:49.490090",
+  "timestamp": "2026-11-07T14:17:07.525645",
   "open_positions_count": 0,
   "total_trades_count": 4,
   "trades": [
@@ -127,6 +127,16 @@
   ],
   "daily_pnl": [
     {
+      "date": "2026-11-07",
+      "starting_capital": null,
+      "realized_pnl": 0.0,
+      "unrealized_pnl": 0.0,
+      "total_trades": 4,
+      "win_count": 3,
+      "loss_count": 1,
+      "updated_at": "2026-11-07T14:17:07.515216"
+    },
+    {
       "date": "2026-11-05",
       "starting_capital": null,
       "realized_pnl": 881.0,
@@ -204,13 +214,15 @@
     "rules": {
       "ema_fast": 20,
       "ema_slow": 50,
-      "rsi_min": 48.0,
-      "rsi_max": 68.0,
+      "rsi_min": 45.0,
+      "rsi_max": 72.0,
       "rsi_period": 14,
       "atr_period": 14,
       "atr_sl_multiplier": 1.5,
       "tp_risk_multiplier": 2.0,
+      "max_ema20_distance_pct": 3.8,
       "min_win_rate": 0.45,
+      "min_profit_factor": 1.25,
       "min_expectancy": 0.0,
       "max_account_risk_pct": 0.01,
       "max_capital_per_stock_pct": 0.2,

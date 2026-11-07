@@ -135,8 +135,8 @@
         <span>Portfolio Equity</span>
         <i class="fa-solid fa-wallet text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums metric-animate" id="metric-equity">₹100,912.28</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-funds-breakdown">Cash: ₹34,668 | Invested: ₹65,332</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums metric-animate" id="metric-equity">₹--</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-funds-breakdown">Syncing live funds...</div>
     </div>
 
     <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
@@ -144,8 +144,8 @@
         <span>Unrealized P&amp;L</span>
         <i class="fa-solid fa-chart-line text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-lg sm:text-2xl font-bold text-emerald-400 mono tabular-nums metric-animate" id="metric-pnl">+₹912.28</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-pnl-breakdown">Floating: +₹912.28 | Realized: ₹0.00</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums metric-animate" id="metric-pnl">--</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-400 mt-1" id="metric-pnl-breakdown">Calculating live P&amp;L...</div>
     </div>
 
     <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
@@ -153,8 +153,8 @@
         <span>Market Breadth</span>
         <i class="fa-solid fa-bars-progress text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-breadth">65.0%</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-breadth-regime">BULLISH_TREND (>50 EMA)</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-breadth">--%</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-breadth-regime">Checking market regime...</div>
     </div>
 
     <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
@@ -162,8 +162,8 @@
         <span>India VIX</span>
         <i class="fa-solid fa-bolt text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-vix">12.80</div>
-      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-dynamic-risk">Dynamic Risk: 1.00%</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums" id="metric-vix">--</div>
+      <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-dynamic-risk">Dynamic Risk: --</div>
     </div>
 
     <div class="fintech-card p-3.5 sm:p-4 rounded-xl">
@@ -171,7 +171,7 @@
         <span>Win Rate (Filtered)</span>
         <i class="fa-solid fa-bullseye text-zinc-600 text-xs"></i>
       </div>
-      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums metric-animate" id="metric-winrate">100.0%</div>
+      <div class="text-lg sm:text-2xl font-bold text-white mono tabular-nums metric-animate" id="metric-winrate">--%</div>
       <div class="text-[10px] sm:text-[11px] text-zinc-500 mt-1" id="metric-winrate-sub">Real-Time Win Rate</div>
     </div>
 
@@ -772,6 +772,11 @@
           return;
         }
 
+        if (currentChart) {
+          try { currentChart.remove(); } catch (e) {}
+          currentChart = null;
+        }
+
         container.innerHTML = '';
         currentPriceLines = [];
 
@@ -1042,12 +1047,14 @@
         const realized = data.total_realized_pnl !== undefined ? data.total_realized_pnl : (data.daily_pnl || 0.0);
         const unrealized = data.unrealized_pnl || 0.0;
         const total = data.total_pnl !== undefined ? data.total_pnl : (realized + unrealized);
-        const pnlSign = total >= 0 ? '+' : '';
-        const uSign = unrealized >= 0 ? '+' : '';
-        const rSign = realized >= 0 ? '+' : '';
+        const formatINR = (val) => {
+          const num = Number(val) || 0.0;
+          const sign = num < 0 ? '-' : (num > 0 ? '+' : '');
+          return `${sign}₹${Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        };
 
         const pnlEl = document.getElementById('metric-pnl');
-        pnlEl.innerText = pnlSign + '₹' + total.toFixed(2);
+        pnlEl.innerText = formatINR(total);
         if (total > 0) {
           pnlEl.className = 'text-lg sm:text-2xl font-bold text-emerald-400 mono tabular-nums';
         } else if (total < 0) {
@@ -1055,7 +1062,7 @@
         } else {
           pnlEl.className = 'text-lg sm:text-2xl font-bold text-white mono tabular-nums';
         }
-        document.getElementById('metric-pnl-breakdown').innerText = `Floating: ${uSign}₹${unrealized.toFixed(2)} | Realized: ${rSign}₹${realized.toFixed(2)}`;
+        document.getElementById('metric-pnl-breakdown').innerText = `Floating: ${formatINR(unrealized)} | Realized: ${formatINR(realized)}`;
 
         if (data.portfolio_equity !== undefined) {
           document.getElementById('metric-equity').innerText = '₹' + Number(data.portfolio_equity).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1317,7 +1324,7 @@
         container.innerHTML = `
           <div class="text-center py-10 text-zinc-600 text-xs">
             <i class="fa-solid fa-circle-exclamation text-xl mb-1 text-zinc-700 block"></i>
-            No candidate setups cleared the VectorBT backtest threshold (&ge;52% Win Rate, Profit Factor &ge;1.50).
+            No candidate setups cleared the VectorBT backtest threshold (&ge;45% Win Rate, Profit Factor &ge;1.25).
           </div>
         `;
         return;
@@ -1326,19 +1333,22 @@
       container.innerHTML = candidates.map(c => {
         const s = c.setup;
         const b = c.backtest;
+        const isNse = s.ticker.endsWith('.NS') || s.ticker.endsWith('.BO');
+        const sym = isNse ? '₹' : '$';
+        const winRateStr = (b && b.win_rate !== undefined) ? `${(b.win_rate * 100).toFixed(1)}%` : 'Approved';
         return `
           <div class="fintech-card-subtle p-3.5 rounded-lg text-xs space-y-2">
             <div class="flex justify-between items-center">
               <span class="font-bold text-white mono">${s.ticker}</span>
               <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] mono">
-                Win Rate: ${(b.win_rate * 100).toFixed(1)}%
+                Win Rate: ${winRateStr}
               </span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-zinc-400 text-[11px] mono">
-              <div>Close: <span class="text-white">₹${s.close.toFixed(2)}</span></div>
+              <div>Close: <span class="text-white">${sym}${s.close.toFixed(2)}</span></div>
               <div>RSI (14): <span class="text-white">${s.rsi.toFixed(1)}</span></div>
-              <div>SL: <span class="text-zinc-300">₹${s.suggested_sl.toFixed(2)}</span></div>
-              <div>TP: <span class="text-zinc-300">₹${s.suggested_tp.toFixed(2)}</span></div>
+              <div>SL: <span class="text-zinc-300">${sym}${s.suggested_sl.toFixed(2)}</span></div>
+              <div>TP: <span class="text-zinc-300">${sym}${s.suggested_tp.toFixed(2)}</span></div>
             </div>
           </div>
         `;
@@ -1349,15 +1359,18 @@
       const card = document.getElementById('ai-decision-card');
       if (!decisions || decisions.length === 0) return;
       const d = decisions[0];
+      const conf = d.confidence !== undefined ? (d.confidence * 100).toFixed(0) : '85';
+      const rr = d.risk_reward_ratio || '2.0';
+      const hold = d.holding_period_days || '5-10';
       card.innerHTML = `
         <div class="flex justify-between items-center border-b border-zinc-800 pb-2">
           <span class="font-bold text-white mono">${d.ticker}</span>
-          <span class="px-2 py-0.5 rounded text-[10px] font-bold mono ${d.action === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400'}">${d.action} (${(d.confidence * 100).toFixed(0)}% Conviction)</span>
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold mono ${d.action === 'BUY' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400'}">${d.action} (${conf}% Conviction)</span>
         </div>
         <p class="text-zinc-300 text-[11px] leading-relaxed">${d.rationale}</p>
         <div class="pt-1.5 border-t border-zinc-850 flex justify-between text-[10px] text-zinc-500 mono">
-          <span>R:R: 1:${d.risk_reward_ratio}</span>
-          <span>Holding: ${d.holding_period_days} Days</span>
+          <span>R:R: 1:${rr}</span>
+          <span>Holding: ${hold} Days</span>
         </div>
       `;
     }

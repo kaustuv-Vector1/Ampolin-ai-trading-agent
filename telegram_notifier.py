@@ -78,34 +78,41 @@ class TelegramNotifier:
     def send_message(self, message: str) -> bool:
         """Synchronous wrapper for message dispatch."""
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If running inside an existing loop
-                task = asyncio.create_task(self._send_async(message))
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                loop.create_task(self._send_async(message))
                 return True
             else:
                 return asyncio.run(self._send_async(message))
-        except RuntimeError:
-            return asyncio.run(self._send_async(message))
+        except Exception as e:
+            logger.error(f"Error in send_message: {e}")
+            return False
 
     def notify_setup_approved(self, ticker: str, decision: TradeDecision, backtest: BacktestResult, order: OrderResult) -> bool:
         """Sends comprehensive trade approval and order execution report."""
         mode_badge = "🟢 LIVE ORDER" if not order.is_paper_trade else "🟡 PAPER TRADING"
         action_emoji = "🚀 BUY" if decision.action == "BUY" else "🔻 SELL"
+        is_nse = ticker.endswith(".NS") or ticker.endswith(".BO")
+        market_str = "NSE CNC Delivery" if is_nse else "Wall Street US CNC"
+        sym = "₹" if is_nse else "$"
 
         msg = (
             f"<b>⚡ AMPOLIN AI TRADING AGENT - TRADE ALERT ⚡</b>\n"
             f"<b>Status:</b> {mode_badge}\n\n"
-            f"<b>Ticker:</b> <code>{ticker}</code> (NSE CNC Delivery)\n"
+            f"<b>Ticker:</b> <code>{ticker}</code> ({market_str})\n"
             f"<b>Action:</b> {action_emoji}\n"
             f"<b>Confidence:</b> {decision.confidence * 100:.1f}%\n"
-            f"<b>Entry Price:</b> ₹{decision.entry_price}\n"
-            f"<b>Stop Loss:</b> ₹{decision.stop_loss}\n"
-            f"<b>Take Profit:</b> ₹{decision.take_profit}\n"
+            f"<b>Entry Price:</b> {sym}{decision.entry_price}\n"
+            f"<b>Stop Loss:</b> {sym}{decision.stop_loss}\n"
+            f"<b>Take Profit:</b> {sym}{decision.take_profit}\n"
             f"<b>Risk / Reward:</b> 1:{decision.risk_reward_ratio}\n"
             f"<b>Shares Quantity:</b> {order.quantity}\n"
-            f"<b>Capital Deployed:</b> ₹{order.capital_allocated:,.2f}\n"
-            f"<b>Risk Amount:</b> ₹{order.total_risk_amount:.2f} ({order.risk_percentage}% account risk)\n\n"
+            f"<b>Capital Deployed:</b> {sym}{order.capital_allocated:,.2f}\n"
+            f"<b>Risk Amount:</b> {sym}{order.total_risk_amount:.2f} ({order.risk_percentage}% account risk)\n\n"
             f"<b>📊 90-Day VectorBT Verification:</b>\n"
             f"• Win Rate: {backtest.win_rate * 100:.1f}%\n"
             f"• Expectancy: ₹{backtest.expectancy:.2f}\n"
